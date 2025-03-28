@@ -1,8 +1,9 @@
 
 import React, { ReactNode, useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { MoveRight, BarChart, Mail } from "lucide-react";
+import { MoveRight, BarChart, Mail, PieChart } from "lucide-react";
 import EmailConfiguration from "./EmailConfiguration";
+import Dashboard from "./Dashboard";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -24,7 +25,11 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
 
       <main className="container mx-auto px-4 py-6">
         <Tabs defaultValue="insurance" value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-8">
+          <TabsList className="grid w-full grid-cols-3 mb-8">
+            <TabsTrigger value="dashboard" className="flex items-center gap-2">
+              <PieChart className="h-4 w-4" />
+              Tableau de Bord
+            </TabsTrigger>
             <TabsTrigger value="insurance" className="flex items-center gap-2">
               <BarChart className="h-4 w-4" />
               Données d'Assurance
@@ -34,6 +39,10 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
               Rappels Email
             </TabsTrigger>
           </TabsList>
+          
+          <TabsContent value="dashboard" className="rounded-lg border shadow-sm bg-white dark:bg-gray-950 p-6">
+            <Dashboard />
+          </TabsContent>
           
           <TabsContent value="insurance" className="rounded-lg border shadow-sm bg-white dark:bg-gray-950 p-6">
             {children}
