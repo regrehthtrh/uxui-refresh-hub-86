@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import * as XLSX from 'xlsx';
 import { format, differenceInDays } from 'date-fns';
@@ -122,6 +121,7 @@ interface InsuranceStore {
   loadRecouvrementFile: (file: File) => Promise<void>;
   resetData: () => void;
   loadEmailMapping: (file: File) => Promise<void>;
+  sendEmail: (emailAccount: string, emailTemplate: string, contactInfo: string, reminderPeriod: number, automatic: boolean) => void;
 }
 
 export const insuranceStore = create<InsuranceStore>((set, get) => ({
@@ -391,4 +391,50 @@ export const insuranceStore = create<InsuranceStore>((set, get) => ({
       throw error;
     }
   },
+
+  sendEmail: (emailAccount, emailTemplate, contactInfo, reminderPeriod, automatic) => {
+    const { insuranceData, emailMappings } = get();
+    
+    // Filtrer les contrats en retard selon la période définie (en jours)
+    const now = new Date();
+    const overdueContracts = insuranceData.filter(contract => {
+      if (contract.status === 'Payé') return false;
+      
+      const emissionDate = new Date(contract.dateEmission);
+      const daysPassed = differenceInDays(now, emissionDate);
+      return daysPassed >= reminderPeriod;
+    });
+    
+    console.log(`Envoi d'emails pour ${overdueContracts.length} contrats en retard`);
+    
+    // Simulation d'envoi d'emails
+    overdueContracts.forEach(contract => {
+      // Trouver l'email correspondant au client
+      const clientMapping = emailMappings.find(mapping => 
+        mapping.clientName.toLowerCase() === contract.clientName.toLowerCase()
+      );
+      
+      if (!clientMapping || !clientMapping.email) {
+        console.log(`Pas d'email trouvé pour: ${contract.clientName}`);
+        return;
+      }
+      
+      // Générer le contenu de l'email
+      const emailContent = emailTemplate
+        .replace(/{clientName}/g, contract.clientName)
+        .replace(/{contractNumber}/g, contract.contractNumber)
+        .replace(/{remainingAmount}/g, contract.remainingAmount.toString())
+        .replace(/{timePassed}/g, contract.timePassed)
+        .replace(/{contactInfo}/g, contactInfo || "[Coordonnées de contact]");
+      
+      console.log(`Email envoyé à: ${clientMapping.email}`);
+      console.log(`Contenu: ${emailContent}`);
+    });
+    
+    // Si l'option automatique est activée, nous configurerions ici un intervalle 
+    // pour envoyer périodiquement des emails (simulé pour cette démo)
+    if (automatic) {
+      console.log(`Emails automatiques configurés pour être envoyés tous les ${reminderPeriod / 30} mois`);
+    }
+  }
 }));

@@ -17,7 +17,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <MoveRight className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-semibold">Insurance Manager</h1>
+            <h1 className="text-xl font-semibold">Gestionnaire d'Assurance</h1>
           </div>
         </div>
       </header>
@@ -27,11 +27,11 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
           <TabsList className="grid w-full grid-cols-2 mb-8">
             <TabsTrigger value="insurance" className="flex items-center gap-2">
               <BarChart className="h-4 w-4" />
-              Insurance Data
+              Données d'Assurance
             </TabsTrigger>
             <TabsTrigger value="email" className="flex items-center gap-2">
               <Mail className="h-4 w-4" />
-              Email Reminders
+              Rappels Email
             </TabsTrigger>
           </TabsList>
           

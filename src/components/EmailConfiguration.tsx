@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 const EmailConfiguration = () => {
   const { toast } = useToast();
-  const { emailMappings, insuranceData, sendAutomaticEmails } = insuranceStore();
+  const { emailMappings, insuranceData, sendEmail } = insuranceStore();
   const [emailAccount, setEmailAccount] = useState("");
   const [password, setPassword] = useState("");
   const [smtpServer, setSmtpServer] = useState("smtp.live.com");
@@ -130,7 +130,7 @@ Votre équipe de gestion`);
     }
     
     const periodInDays = parseInt(reminderPeriod) * 30; // Convertir mois en jours
-    sendAutomaticEmails(
+    sendEmail(
       emailAccount, 
       emailTemplate, 
       contactInfo, 
