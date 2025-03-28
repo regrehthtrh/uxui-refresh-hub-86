@@ -141,8 +141,8 @@ export const insuranceStore = create<InsuranceStore>((set, get) => ({
       }
       
       // Obtenir les en-têtes
-      const headers = jsonData[0];
-      const rows = jsonData.slice(1);
+      const headers = jsonData[0] as Record<string, any>;
+      const rows = jsonData.slice(1) as Record<string, any>[];
       
       // Mapper les colonnes
       const columnMatchers = {
@@ -260,8 +260,8 @@ export const insuranceStore = create<InsuranceStore>((set, get) => ({
       }
       
       // Obtenir les en-têtes
-      const headers = jsonData[0];
-      const rows = jsonData.slice(1);
+      const headers = jsonData[0] as Record<string, any>;
+      const rows = jsonData.slice(1) as Record<string, any>[];
       
       // Mapper les colonnes
       const columnMatchers = {
@@ -297,7 +297,7 @@ export const insuranceStore = create<InsuranceStore>((set, get) => ({
       
       // Traiter les données
       const paymentsData = rows.map(row => {
-        const result: Partial<Record<string, any>> = {};
+        const result: Record<string, any> = {};
         
         for (const [excelCol, targetField] of Object.entries(columnMapping)) {
           const value = row[excelCol];
