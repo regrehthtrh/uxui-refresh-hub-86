@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { 
   Table, TableBody, TableCell, TableHead, 
   TableHeader, TableRow 
@@ -15,34 +15,84 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { insuranceStore } from "@/store/insuranceStore";
 import { useToast } from "@/hooks/use-toast";
 import { Copy, FileUp, RefreshCw, MoreHorizontal } from "lucide-react";
+import * as XLSX from 'xlsx';
 
 const InsuranceDataTable = () => {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateSort, setDateSort] = useState("ascending");
+  const creanceInputRef = useRef<HTMLInputElement>(null);
+  const recouvrementInputRef = useRef<HTMLInputElement>(null);
   
-  // This would be loaded from your store in a real implementation
-  const [insuranceData, setInsuranceData] = useState<any[]>([]);
+  const { 
+    insuranceData,
+    loadCreanceFile,
+    loadRecouvrementFile,
+    resetData
+  } = insuranceStore();
   
   const handleLoadCreanceFile = () => {
-    toast({
-      title: "File Upload",
-      description: "Creance file has been loaded successfully.",
-    });
+    if (creanceInputRef.current) {
+      creanceInputRef.current.click();
+    }
+  };
+  
+  const handleCreanceFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    
+    try {
+      await loadCreanceFile(files[0]);
+      toast({
+        title: "Chargement réussi",
+        description: "Le fichier de créance a été chargé avec succès.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger le fichier de créance.",
+        variant: "destructive"
+      });
+    }
+    
+    // Reset the input value so the same file can be loaded again if needed
+    if (event.target) event.target.value = "";
   };
   
   const handleLoadRecouvrementFile = () => {
-    toast({
-      title: "File Upload",
-      description: "Recouvrement file has been loaded successfully.",
-    });
+    if (recouvrementInputRef.current) {
+      recouvrementInputRef.current.click();
+    }
+  };
+  
+  const handleRecouvrementFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    
+    try {
+      await loadRecouvrementFile(files[0]);
+      toast({
+        title: "Chargement réussi",
+        description: "Le fichier de recouvrement a été chargé avec succès.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger le fichier de recouvrement.",
+        variant: "destructive"
+      });
+    }
+    
+    // Reset the input value so the same file can be loaded again if needed
+    if (event.target) event.target.value = "";
   };
   
   const handleResetData = () => {
+    resetData();
     toast({
-      title: "Data Reset",
-      description: "All data has been reset successfully.",
+      title: "Réinitialisation",
+      description: "Toutes les données ont été réinitialisées avec succès.",
     });
   };
   
@@ -53,9 +103,11 @@ const InsuranceDataTable = () => {
   };
   
   const handleCopyRow = (row: any) => {
+    const rowText = Object.values(row).join("\t");
+    navigator.clipboard.writeText(rowText);
     toast({
-      title: "Copied",
-      description: "Row data copied to clipboard.",
+      title: "Copié",
+      description: "Les données de la ligne ont été copiées dans le presse-papiers.",
     });
   };
 
@@ -77,18 +129,73 @@ const InsuranceDataTable = () => {
     }
   };
 
+  // Appliquer les filtres sur les données
+  const filteredData = insuranceData.filter(item => {
+    // Filtre de recherche
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesClientName = item.clientName.toLowerCase().includes(query);
+      const matchesContractNumber = item.contractNumber.toLowerCase().includes(query);
+      if (!matchesClientName && !matchesContractNumber) return false;
+    }
+    
+    // Filtre de statut
+    if (statusFilter !== "all") {
+      const statusMapping: Record<string, string> = {
+        "paid": "Payé",
+        "partial": "Partiellement payé",
+        "unpaid": "Impayé"
+      };
+      if (item.status !== statusMapping[statusFilter]) return false;
+    }
+    
+    return true;
+  });
+
+  // Tri par date
+  const sortedData = [...filteredData].sort((a, b) => {
+    const dateA = new Date(a.dateEmission).getTime();
+    const dateB = new Date(b.dateEmission).getTime();
+    
+    return dateSort === "ascending" 
+      ? dateA - dateB
+      : dateB - dateA;
+  });
+
+  // Statistiques pour l'affichage du résumé
+  const paidCount = filteredData.filter(item => item.status === "Payé").length;
+  const partialCount = filteredData.filter(item => item.status === "Partiellement payé").length;
+  const unpaidCount = filteredData.filter(item => item.status === "Impayé").length;
+  const totalCount = filteredData.length;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap justify-between gap-4">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <input
+            type="file"
+            ref={creanceInputRef}
+            onChange={handleCreanceFileChange}
+            accept=".xlsx,.xls"
+            className="hidden"
+          />
           <Button onClick={handleLoadCreanceFile} className="flex items-center gap-2">
             <FileUp className="h-4 w-4" />
             Charger créance
           </Button>
+          
+          <input
+            type="file"
+            ref={recouvrementInputRef}
+            onChange={handleRecouvrementFileChange}
+            accept=".xlsx,.xls"
+            className="hidden"
+          />
           <Button onClick={handleLoadRecouvrementFile} className="flex items-center gap-2">
             <FileUp className="h-4 w-4" />
             Charger recouvrement
           </Button>
+          
           <Button variant="secondary" onClick={handleResetData} className="flex items-center gap-2">
             <RefreshCw className="h-4 w-4" />
             Réinitialiser
@@ -152,14 +259,14 @@ const InsuranceDataTable = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {insuranceData.length === 0 ? (
+                {sortedData.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center py-16 text-muted-foreground">
                       Aucune donnée disponible. Veuillez charger un fichier créance.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  insuranceData.map((row, index) => (
+                  sortedData.map((row, index) => (
                     <TableRow key={index}>
                       <TableCell>{row.contractNumber}</TableCell>
                       <TableCell>{row.clientName}</TableCell>
@@ -202,10 +309,10 @@ const InsuranceDataTable = () => {
           <div className="text-center">
             <p className="text-base font-medium">
               Statut global : 
-              <span className="text-green-600 mx-1">🟢 0 Payé</span>,
-              <span className="text-amber-500 mx-1">🟡 0 Partiellement payé</span>,
-              <span className="text-red-600 mx-1">🔴 0 Impayé</span>
-              (Total : 0)
+              <span className="text-green-600 mx-1">🟢 {paidCount} Payé</span>,
+              <span className="text-amber-500 mx-1">🟡 {partialCount} Partiellement payé</span>,
+              <span className="text-red-600 mx-1">🔴 {unpaidCount} Impayé</span>
+              (Total : {totalCount})
             </p>
           </div>
         </CardContent>
