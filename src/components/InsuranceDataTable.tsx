@@ -14,8 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { insuranceStore } from "@/store/insuranceStore";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, FileUp, RefreshCw, MoreHorizontal } from "lucide-react";
-import * as XLSX from 'xlsx';
+import { Copy, FileUp, RefreshCw, MoreHorizontal, X } from "lucide-react";
 
 const InsuranceDataTable = () => {
   const { toast } = useToast();
@@ -100,6 +99,11 @@ const InsuranceDataTable = () => {
     setSearchQuery("");
     setStatusFilter("all");
     setDateSort("ascending");
+    
+    toast({
+      title: "Filtres réinitialisés",
+      description: "Tous les filtres ont été réinitialisés.",
+    });
   };
   
   const handleCopyRow = (row: any) => {
@@ -233,7 +237,8 @@ const InsuranceDataTable = () => {
           </SelectContent>
         </Select>
         
-        <Button variant="outline" onClick={handleResetFilters} size="sm">
+        <Button variant="outline" onClick={handleResetFilters} size="sm" className="flex items-center gap-1">
+          <X className="h-4 w-4" />
           Réinitialiser filtres
         </Button>
       </div>
