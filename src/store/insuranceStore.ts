@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import * as XLSX from 'xlsx';
 import { format, differenceInDays } from 'date-fns';
@@ -125,6 +124,7 @@ interface SentEmailRecord {
 interface InsuranceStore {
   insuranceData: InsuranceData[];
   emailMappings: EmailMapping[];
+  sentEmails: SentEmailRecord[];
   loadCreanceFile: (file: File) => Promise<void>;
   loadRecouvrementFile: (file: File) => Promise<void>;
   resetData: () => void;
@@ -138,6 +138,7 @@ export const insuranceStore = create<InsuranceStore>()(
     (set, get) => ({
       insuranceData: [],
       emailMappings: [],
+      sentEmails: [],
       
       loadCreanceFile: async (file) => {
         try {
@@ -372,7 +373,8 @@ export const insuranceStore = create<InsuranceStore>()(
       },
       
       resetData: () => {
-        set({ insuranceData: [], emailMappings: [] });
+        set({ insuranceData: [], emailMappings: [], sentEmails: [] });
+        localStorage.removeItem('sentEmails');
       },
       
       loadEmailMapping: async (file) => {
@@ -412,7 +414,7 @@ export const insuranceStore = create<InsuranceStore>()(
           throw error;
         }
       },
-
+      
       sendEmail: (emailAccount, emailTemplate, contactInfo, reminderPeriod, automatic) => {
         const { insuranceData, emailMappings } = get();
         
@@ -428,9 +430,14 @@ export const insuranceStore = create<InsuranceStore>()(
         
         console.log(`Envoi d'emails pour ${overdueContracts.length} contrats en retard`);
         
-        // Stockage des emails envoyés dans localStorage
-        const sentEmails: SentEmailRecord[] = JSON.parse(localStorage.getItem('sentEmails') || '[]');
-        const updatedSentEmails = [...sentEmails];
+        // Get existing sent emails from localStorage
+        const sentEmailsData = localStorage.getItem('sentEmails');
+        const existingSentEmails: SentEmailRecord[] = sentEmailsData 
+          ? JSON.parse(sentEmailsData) 
+          : [];
+        
+        // Make a copy for updates
+        const updatedSentEmails = [...existingSentEmails];
         
         // Simulation d'envoi d'emails
         overdueContracts.forEach(contract => {
@@ -465,8 +472,9 @@ export const insuranceStore = create<InsuranceStore>()(
           }
         });
         
-        // Sauvegarder dans localStorage
+        // Sauvegarder dans localStorage and update state
         localStorage.setItem('sentEmails', JSON.stringify(updatedSentEmails));
+        set({ sentEmails: updatedSentEmails });
         
         // Si l'option automatique est activée, nous configurerions ici un intervalle 
         // pour envoyer périodiquement des emails (simulé pour cette démo)
@@ -476,11 +484,21 @@ export const insuranceStore = create<InsuranceStore>()(
       },
       
       getEmailsSent: () => {
+        // Get emails from state first
+        const { sentEmails } = get();
+        if (sentEmails.length > 0) {
+          return sentEmails;
+        }
+        
+        // If not in state, try localStorage
         const sentEmailsData = localStorage.getItem('sentEmails');
         if (!sentEmailsData) return [];
         
         try {
-          return JSON.parse(sentEmailsData) as SentEmailRecord[];
+          const parsedEmails = JSON.parse(sentEmailsData) as SentEmailRecord[];
+          // Update state with emails from localStorage
+          set({ sentEmails: parsedEmails });
+          return parsedEmails;
         } catch (error) {
           console.error("Erreur lors de la récupération des emails envoyés:", error);
           return [];
@@ -488,10 +506,11 @@ export const insuranceStore = create<InsuranceStore>()(
       }
     }),
     {
-      name: 'insurance-storage', // nom unique pour le stockage
+      name: 'insurance-storage',
       partialize: (state) => ({
         insuranceData: state.insuranceData,
-        emailMappings: state.emailMappings
+        emailMappings: state.emailMappings,
+        sentEmails: state.sentEmails
       })
     }
   )
