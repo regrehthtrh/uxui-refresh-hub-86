@@ -15,15 +15,15 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-white to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <header className="bg-white dark:bg-gray-950 shadow-sm border-b">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="w-full px-6 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <MoveRight className="h-6 w-6 text-primary" />
+            <MoveRight className="h-6 w-6 text-[#004a80]" />
             <h1 className="text-xl font-semibold">Gestionnaire d'Assurance</h1>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-6">
+      <main className="w-full px-6 py-6">
         <Tabs defaultValue="insurance" value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3 mb-8">
             <TabsTrigger value="dashboard" className="flex items-center gap-2">
