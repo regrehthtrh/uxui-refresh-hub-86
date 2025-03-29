@@ -116,6 +116,12 @@ interface EmailMapping {
   email: string;
 }
 
+interface SentEmailRecord {
+  contractNumber: string;
+  emailSent: boolean;
+  sentAt?: string;
+}
+
 interface InsuranceStore {
   insuranceData: InsuranceData[];
   emailMappings: EmailMapping[];
@@ -124,7 +130,7 @@ interface InsuranceStore {
   resetData: () => void;
   loadEmailMapping: (file: File) => Promise<void>;
   sendEmail: (emailAccount: string, emailTemplate: string, contactInfo: string, reminderPeriod: number, automatic: boolean) => void;
-  getEmailsSent: () => { contractNumber: string; emailSent: boolean }[];
+  getEmailsSent: () => SentEmailRecord[];
 }
 
 export const insuranceStore = create<InsuranceStore>()(
@@ -423,7 +429,7 @@ export const insuranceStore = create<InsuranceStore>()(
         console.log(`Envoi d'emails pour ${overdueContracts.length} contrats en retard`);
         
         // Stockage des emails envoyés dans localStorage
-        const sentEmails = JSON.parse(localStorage.getItem('sentEmails') || '[]');
+        const sentEmails: SentEmailRecord[] = JSON.parse(localStorage.getItem('sentEmails') || '[]');
         const updatedSentEmails = [...sentEmails];
         
         // Simulation d'envoi d'emails
@@ -474,8 +480,7 @@ export const insuranceStore = create<InsuranceStore>()(
         if (!sentEmailsData) return [];
         
         try {
-          const sentEmails = JSON.parse(sentEmailsData);
-          return sentEmails;
+          return JSON.parse(sentEmailsData) as SentEmailRecord[];
         } catch (error) {
           console.error("Erreur lors de la récupération des emails envoyés:", error);
           return [];
