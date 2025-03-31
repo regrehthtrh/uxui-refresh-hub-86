@@ -15,70 +15,41 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { insuranceStore } from "@/store/insuranceStore";
 import { useToast } from "@/hooks/use-toast";
 import { Copy, FileUp, RefreshCw, MoreHorizontal, X } from "lucide-react";
+import ConfirmResetDialog from "./ConfirmResetDialog";
 
 const InsuranceDataTable = () => {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateSort, setDateSort] = useState("ascending");
-  const creanceInputRef = useRef<HTMLInputElement>(null);
-  const recouvrementInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const { 
     insuranceData,
-    loadCreanceFile,
-    loadRecouvrementFile,
+    loadFile,
     resetData
   } = insuranceStore();
   
-  const handleLoadCreanceFile = () => {
-    if (creanceInputRef.current) {
-      creanceInputRef.current.click();
+  const handleLoadFile = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
     }
   };
   
-  const handleCreanceFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
     
     try {
-      await loadCreanceFile(files[0]);
+      await loadFile(files[0]);
       toast({
         title: "Chargement réussi",
-        description: "Le fichier de créance a été chargé avec succès.",
+        description: "Le fichier a été chargé avec succès.",
       });
     } catch (error) {
       toast({
         title: "Erreur",
-        description: "Impossible de charger le fichier de créance.",
-        variant: "destructive"
-      });
-    }
-    
-    // Reset the input value so the same file can be loaded again if needed
-    if (event.target) event.target.value = "";
-  };
-  
-  const handleLoadRecouvrementFile = () => {
-    if (recouvrementInputRef.current) {
-      recouvrementInputRef.current.click();
-    }
-  };
-  
-  const handleRecouvrementFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-    
-    try {
-      await loadRecouvrementFile(files[0]);
-      toast({
-        title: "Chargement réussi",
-        description: "Le fichier de recouvrement a été chargé avec succès.",
-      });
-    } catch (error) {
-      toast({
-        title: "Erreur",
-        description: "Impossible de charger le fichier de recouvrement.",
+        description: "Impossible de charger le fichier. Veuillez vérifier le format.",
         variant: "destructive"
       });
     }
@@ -178,32 +149,22 @@ const InsuranceDataTable = () => {
         <div className="flex flex-wrap gap-2">
           <input
             type="file"
-            ref={creanceInputRef}
-            onChange={handleCreanceFileChange}
+            ref={fileInputRef}
+            onChange={handleFileChange}
             accept=".xlsx,.xls"
             className="hidden"
           />
-          <Button onClick={handleLoadCreanceFile} className="flex items-center gap-2">
+          <Button onClick={handleLoadFile} className="flex items-center gap-2">
             <FileUp className="h-4 w-4" />
-            Charger créance
+            Charger Fichier
           </Button>
           
-          <input
-            type="file"
-            ref={recouvrementInputRef}
-            onChange={handleRecouvrementFileChange}
-            accept=".xlsx,.xls"
-            className="hidden"
-          />
-          <Button onClick={handleLoadRecouvrementFile} className="flex items-center gap-2">
-            <FileUp className="h-4 w-4" />
-            Charger recouvrement
-          </Button>
-          
-          <Button variant="secondary" onClick={handleResetData} className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4" />
-            Réinitialiser
-          </Button>
+          <ConfirmResetDialog onConfirm={handleResetData}>
+            <Button variant="secondary" className="flex items-center gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Réinitialiser
+            </Button>
+          </ConfirmResetDialog>
         </div>
       </div>
       
@@ -244,9 +205,6 @@ const InsuranceDataTable = () => {
       </div>
       
       <Card>
-        <CardHeader className="px-6 pt-6 pb-0">
-          <CardTitle className="text-xl">Polices d'assurance</CardTitle>
-        </CardHeader>
         <CardContent className="p-6">
           <div className="rounded-md border overflow-hidden">
             <Table>
@@ -267,7 +225,7 @@ const InsuranceDataTable = () => {
                 {sortedData.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center py-16 text-muted-foreground">
-                      Aucune donnée disponible. Veuillez charger un fichier créance.
+                      Aucune donnée disponible. Veuillez charger un fichier.
                     </TableCell>
                   </TableRow>
                 ) : (

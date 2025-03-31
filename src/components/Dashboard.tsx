@@ -3,10 +3,10 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { insuranceStore } from "@/store/insuranceStore";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from "recharts";
-import { FileUp, AlertCircle, Clock, Calendar, CheckCircle2, AlertTriangle, Activity } from "lucide-react";
+import { FileUp, AlertCircle, Clock, Calendar, CheckCircle2, AlertTriangle, Activity, TrendingDown } from "lucide-react";
 
 const Dashboard = () => {
-  const { insuranceData } = insuranceStore();
+  const { insuranceData, getTopDebtors } = insuranceStore();
   
   // Calculate statistics
   const totalContracts = insuranceData.length;
@@ -30,6 +30,9 @@ const Dashboard = () => {
     }
     return sum;
   }, 0);
+  
+  // Get top debtors
+  const topDebtors = getTopDebtors(5);
   
   // Status data for pie chart
   const statusCounts = insuranceData.reduce((acc: {[key: string]: number}, contract) => {
@@ -145,54 +148,90 @@ const Dashboard = () => {
         </Card>
       </div>
       
-      {/* Risk Analysis Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Top Debtors and Risk Analysis */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Clock className="h-4 w-4 text-[#004a80]" />
-              Contrats en Retard
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingDown className="h-5 w-5 text-red-500" />
+              Top 5 Débiteurs
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{overdueCount}</div>
-            <p className="text-sm text-muted-foreground mt-1">
-              {((overdueCount / totalContracts) * 100).toFixed(1)}% du total
-            </p>
+            {topDebtors.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">
+                Aucune donnée disponible
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {topDebtors.map((debtor, index) => (
+                  <div key={index} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm bg-muted w-5 h-5 rounded-full flex items-center justify-center">
+                        {index + 1}
+                      </span>
+                      <span className="font-medium">{debtor.clientName}</span>
+                    </div>
+                    <span className="font-bold text-red-500">
+                      {debtor.remainingAmount.toLocaleString('fr-FR')} DZD
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
         
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
-              Exposition au Risque
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{riskExposure.toLocaleString('fr-FR')} DZD</div>
-            <p className="text-sm text-muted-foreground mt-1">
-              Basé sur l'âge et le montant restant
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-[#004a80]" />
-              Projection de Remboursement
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {new Date(Date.now() + (remainingAmount / paidAmount) * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('fr-FR')}
-            </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              Basé sur le taux de remboursement actuel
-            </p>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 gap-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Clock className="h-4 w-4 text-[#004a80]" />
+                Contrats en Retard
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{overdueCount}</div>
+              <p className="text-sm text-muted-foreground mt-1">
+                {((overdueCount / totalContracts) * 100).toFixed(1)}% du total
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                Exposition au Risque
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{riskExposure.toLocaleString('fr-FR')} DZD</div>
+              <p className="text-sm text-muted-foreground mt-1">
+                Basé sur l'âge et le montant restant
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-[#004a80]" />
+                Projection de Remboursement
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {paidAmount > 0 
+                  ? new Date(Date.now() + (remainingAmount / paidAmount) * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('fr-FR')
+                  : "N/A"}
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">
+                Basé sur le taux de remboursement actuel
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
       
       {/* Charts */}

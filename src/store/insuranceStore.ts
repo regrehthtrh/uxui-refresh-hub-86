@@ -1,7 +1,7 @@
+
 import { create } from 'zustand';
 import * as XLSX from 'xlsx';
 import { format, differenceInDays } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { persist } from 'zustand/middleware';
 
 // Fonction utilitaire pour convertir les jours en format lisible (années, mois, jours)
@@ -125,12 +125,12 @@ interface InsuranceStore {
   insuranceData: InsuranceData[];
   emailMappings: EmailMapping[];
   sentEmails: SentEmailRecord[];
-  loadCreanceFile: (file: File) => Promise<void>;
-  loadRecouvrementFile: (file: File) => Promise<void>;
+  loadFile: (file: File) => Promise<void>;
   resetData: () => void;
   loadEmailMapping: (file: File) => Promise<void>;
   sendEmail: (emailAccount: string, emailTemplate: string, contactInfo: string, reminderPeriod: number, automatic: boolean) => void;
   getEmailsSent: () => SentEmailRecord[];
+  getTopDebtors: (count: number) => {clientName: string, remainingAmount: number}[];
 }
 
 export const insuranceStore = create<InsuranceStore>()(
@@ -140,7 +140,7 @@ export const insuranceStore = create<InsuranceStore>()(
       emailMappings: [],
       sentEmails: [],
       
-      loadCreanceFile: async (file) => {
+      loadFile: async (file) => {
         try {
           // Lire le fichier Excel
           const data = await file.arrayBuffer();
@@ -161,7 +161,9 @@ export const insuranceStore = create<InsuranceStore>()(
             "Client Name": ["assure", "assuré", "client name", "client", "nom", "assure"],
             "Contract Number": ["no police", "no_police", "numero_police", "police", "contrat"],
             "Date Emission": ["emission", "date", "date_emission", "date d'emission"],
-            "Total Amount Due": ["net a payer", "net à payer", "net_a_payer", "montant", "total"]
+            "Total Amount Due": ["net a payer", "net à payer", "net_a_payer", "montant", "total"],
+            "Amount Paid": ["montant_paye", "montant_payé", "amount_paid", "montant encaissé", "paid", "paiement"],
+            "Remaining Amount": ["solde", "reste", "remaining", "restant", "remaining amount"]
           };
           
           const columnMapping: Record<string, string> = {};
@@ -181,8 +183,8 @@ export const insuranceStore = create<InsuranceStore>()(
             }
           }
           
-          // Vérifier que toutes les colonnes requises sont trouvées
-          const mustHave = ["Client Name", "Contract Number", "Date Emission", "Total Amount Due"];
+          // Vérifier que les colonnes requises sont trouvées
+          const mustHave = ["Client Name", "Contract Number"];
           const missing = mustHave.filter(field => !Object.values(columnMapping).includes(field));
           
           if (missing.length > 0) {
@@ -224,150 +226,84 @@ export const insuranceStore = create<InsuranceStore>()(
                   const amount = parseFloat(String(value).replace(/[^\d.-]/g, ""));
                   result.totalAmount = isNaN(amount) ? 0 : amount;
                   break;
+                case "Amount Paid":
+                  const paid = parseFloat(String(value).replace(/[^\d.-]/g, ""));
+                  result.amountPaid = isNaN(paid) ? 0 : paid;
+                  break;
+                case "Remaining Amount":
+                  const remaining = parseFloat(String(value).replace(/[^\d.-]/g, ""));
+                  result.remainingAmount = isNaN(remaining) ? 0 : remaining;
+                  break;
               }
             }
             
-            // Valeurs par défaut
-            result.amountPaid = 0;
-            result.remainingAmount = result.totalAmount || 0;
-            result.status = 'Impayé';
+            // Calculs et valeurs par défaut
+            if (result.totalAmount === undefined && result.amountPaid !== undefined && result.remainingAmount !== undefined) {
+              result.totalAmount = (result.amountPaid || 0) + (result.remainingAmount || 0);
+            }
+            
+            if (result.amountPaid === undefined && result.totalAmount !== undefined && result.remainingAmount !== undefined) {
+              result.amountPaid = (result.totalAmount || 0) - (result.remainingAmount || 0);
+            }
+            
+            if (result.remainingAmount === undefined && result.totalAmount !== undefined && result.amountPaid !== undefined) {
+              result.remainingAmount = (result.totalAmount || 0) - (result.amountPaid || 0);
+            }
+            
+            // Déterminer le statut
+            if (result.remainingAmount !== undefined && result.totalAmount !== undefined) {
+              if (result.remainingAmount <= 0) {
+                result.status = 'Payé';
+              } else if (result.remainingAmount < result.totalAmount) {
+                result.status = 'Partiellement payé';
+              } else {
+                result.status = 'Impayé';
+              }
+            } else {
+              result.status = 'Impayé';
+            }
             
             return result;
           });
           
           // Filtrer les données incomplètes
           const validData = processedData.filter(
-            item => item.clientName && item.contractNumber && item.dateEmission && typeof item.totalAmount === 'number'
+            item => item.clientName && item.contractNumber && item.dateEmission && 
+                   typeof item.totalAmount === 'number' && typeof item.remainingAmount === 'number'
           ) as InsuranceData[];
           
-          // Mettre à jour le store
+          // Mettre à jour le store - si un contrat existe déjà, mettre à jour ses valeurs
           set(state => {
-            const existingData = state.insuranceData || [];
+            const existingData = [...state.insuranceData];
+            const existingContractMap = new Map<string, number>();
             
-            // Combiner avec les données existantes, en évitant les doublons par numéro de contrat
-            const existingContractNumbers = new Set(existingData.map(item => item.contractNumber));
-            const newItems = validData.filter(item => !existingContractNumbers.has(item.contractNumber));
-            
-            return { 
-              insuranceData: [...existingData, ...newItems] 
-            };
-          });
-          
-        } catch (error) {
-          console.error("Erreur lors du traitement du fichier de créance:", error);
-          throw error;
-        }
-      },
-      
-      loadRecouvrementFile: async (file) => {
-        try {
-          // Lire le fichier Excel
-          const data = await file.arrayBuffer();
-          const workbook = XLSX.read(data);
-          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: "A" });
-          
-          if (jsonData.length <= 1) {
-            throw new Error("Fichier vide ou mal formaté");
-          }
-          
-          // Obtenir les en-têtes
-          const headers = jsonData[0] as Record<string, any>;
-          const rows = jsonData.slice(1) as Record<string, any>[];
-          
-          // Mapper les colonnes
-          const columnMatchers = {
-            "Client Name": ["assure", "assuré", "client name", "client", "nom", "assure"],
-            "Contract Number": ["no police", "no_police", "numero_police", "police", "contrat"],
-            "Amount Paid": ["montant_paye", "montant_payé", "amount_paid", "montant encaissé", "paid", "paiement"]
-          };
-          
-          const columnMapping: Record<string, string> = {};
-          const columnsArray = Object.keys(headers);
-          
-          for (const [targetField, possibleMatches] of Object.entries(columnMatchers)) {
-            const bestMatch = findBestColumnMatch(
-              columnsArray.map(key => String(headers[key])), 
-              possibleMatches
-            );
-            
-            if (bestMatch) {
-              const headerKey = columnsArray.find(key => headers[key] === bestMatch);
-              if (headerKey) {
-                columnMapping[headerKey] = targetField;
-              }
-            }
-          }
-          
-          // Vérifier que les colonnes requises sont trouvées
-          const mustHave = ["Client Name", "Contract Number"];
-          const missing = mustHave.filter(field => !Object.values(columnMapping).includes(field));
-          
-          if (missing.length > 0) {
-            throw new Error(`Colonnes manquantes: ${missing.join(", ")}`);
-          }
-          
-          // Traiter les données
-          const paymentsData = rows.map(row => {
-            const result: Record<string, any> = {};
-            
-            for (const [excelCol, targetField] of Object.entries(columnMapping)) {
-              const value = row[excelCol];
-              
-              switch(targetField) {
-                case "Client Name":
-                case "Contract Number":
-                  result[targetField] = String(value || "");
-                  break;
-                case "Amount Paid":
-                  const amount = parseFloat(String(value).replace(/[^\d.-]/g, ""));
-                  result[targetField] = isNaN(amount) ? 0 : amount;
-                  break;
-              }
-            }
-            
-            return result;
-          });
-          
-          // Créer un map des paiements par numéro de contrat
-          const paymentsByContract: Record<string, number> = {};
-          
-          paymentsData.forEach(payment => {
-            if (payment["Contract Number"] && payment["Amount Paid"]) {
-              const contractNumber = payment["Contract Number"];
-              if (!paymentsByContract[contractNumber]) {
-                paymentsByContract[contractNumber] = 0;
-              }
-              paymentsByContract[contractNumber] += payment["Amount Paid"];
-            }
-          });
-          
-          // Mettre à jour le store avec les informations de paiement
-          set(state => {
-            const updatedData = state.insuranceData.map(item => {
-              const amountPaid = paymentsByContract[item.contractNumber] || 0;
-              const remainingAmount = item.totalAmount - amountPaid;
-              let status: InsuranceStatus = 'Impayé';
-              
-              if (amountPaid >= item.totalAmount) {
-                status = 'Payé';
-              } else if (amountPaid > 0) {
-                status = 'Partiellement payé';
-              }
-              
-              return {
-                ...item,
-                amountPaid,
-                remainingAmount,
-                status
-              };
+            // Créer un map des contrats existants avec leur index dans le tableau
+            existingData.forEach((item, index) => {
+              existingContractMap.set(item.contractNumber, index);
             });
             
-            return { insuranceData: updatedData };
+            // Mettre à jour ou ajouter les données
+            validData.forEach(newItem => {
+              if (existingContractMap.has(newItem.contractNumber)) {
+                // Mettre à jour le contrat existant
+                const index = existingContractMap.get(newItem.contractNumber)!;
+                existingData[index] = {
+                  ...existingData[index],
+                  remainingAmount: newItem.remainingAmount,
+                  amountPaid: newItem.amountPaid || existingData[index].amountPaid,
+                  status: newItem.status
+                };
+              } else {
+                // Ajouter le nouveau contrat
+                existingData.push(newItem);
+              }
+            });
+            
+            return { insuranceData: existingData };
           });
           
         } catch (error) {
-          console.error("Erreur lors du traitement du fichier de recouvrement:", error);
+          console.error("Erreur lors du traitement du fichier:", error);
           throw error;
         }
       },
@@ -503,6 +439,25 @@ export const insuranceStore = create<InsuranceStore>()(
           console.error("Erreur lors de la récupération des emails envoyés:", error);
           return [];
         }
+      },
+      
+      // Nouvelle fonction pour obtenir les 5 plus grands débiteurs
+      getTopDebtors: (count = 5) => {
+        const { insuranceData } = get();
+        
+        // Filtrer les contrats impayés ou partiellement payés
+        const debtors = insuranceData
+          .filter(item => item.status !== 'Payé')
+          .map(item => ({
+            clientName: item.clientName,
+            remainingAmount: item.remainingAmount
+          }))
+          // Trier par montant restant décroissant
+          .sort((a, b) => b.remainingAmount - a.remainingAmount)
+          // Prendre les N premiers
+          .slice(0, count);
+        
+        return debtors;
       }
     }),
     {
