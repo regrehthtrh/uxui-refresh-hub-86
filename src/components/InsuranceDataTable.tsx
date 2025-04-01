@@ -21,7 +21,7 @@ const InsuranceDataTable = () => {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [dateSort, setDateSort] = useState("none");
+  const [dateSort, setDateSort] = useState("ascending");
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -42,7 +42,7 @@ const InsuranceDataTable = () => {
     if (!files || files.length === 0) return;
     
     // Vérification de la taille du fichier
-    const maxSizeMB = 20; // Limite de 20 MB
+    const maxSizeMB = 50; // Increased from 20 to 50 MB
     const fileSizeMB = files[0].size / (1024 * 1024);
     
     if (fileSizeMB > maxSizeMB) {
@@ -69,7 +69,7 @@ const InsuranceDataTable = () => {
       
       toast({
         title: "Chargement réussi",
-        description: "Le fichier a été chargé avec succès.",
+        description: `Le fichier a été chargé avec succès. ${insuranceData.length} enregistrements trouvés.`,
       });
     } catch (error: any) {
       console.error("Erreur lors du traitement du fichier:", error);
@@ -97,7 +97,7 @@ const InsuranceDataTable = () => {
   const handleResetFilters = () => {
     setSearchQuery("");
     setStatusFilter("all");
-    setDateSort("none");
+    setDateSort("ascending");
     
     toast({
       title: "Filtres réinitialisés",
@@ -161,11 +161,6 @@ const InsuranceDataTable = () => {
 
   // Tri par date (si nécessaire)
   const sortedData = [...filteredData].sort((a, b) => {
-    if (dateSort === "none") {
-      // Garder l'ordre original du fichier Excel
-      return 0;
-    }
-    
     const dateA = new Date(a.dateEmission).getTime();
     const dateB = new Date(b.dateEmission).getTime();
     
@@ -235,10 +230,9 @@ const InsuranceDataTable = () => {
         
         <Select value={dateSort} onValueChange={setDateSort}>
           <SelectTrigger className="w-60">
-            <SelectValue placeholder="Ordre original" />
+            <SelectValue placeholder="Date d'effet: Croissant" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="none">Ordre original</SelectItem>
             <SelectItem value="ascending">Date d'effet: Croissant</SelectItem>
             <SelectItem value="descending">Date d'effet: Décroissant</SelectItem>
           </SelectContent>

@@ -179,8 +179,12 @@ export const insuranceStore = create<InsuranceStore>()(
           const workbook = XLSX.read(data, {
             cellFormula: false, // Désactiver les formules pour améliorer les performances
             cellHTML: false,   // Désactiver le HTML pour améliorer les performances
-            cellText: true     // Activer le texte brut pour améliorer les performances
+            cellText: true,    // Activer le texte brut pour améliorer les performances
+            type: 'array',     // Optimisé pour les fichiers volumineux
+            cellDates: true,   // Convertir les dates en objets Date automatiquement
+            dateNF: 'yyyy-mm-dd', // Format de date par défaut
           });
+          
           console.log("Workbook chargé, feuilles disponibles:", workbook.SheetNames);
           
           // Vérifier si la feuille spécifiée existe
@@ -217,7 +221,7 @@ export const insuranceStore = create<InsuranceStore>()(
           const allData = XLSX.utils.sheet_to_json(worksheet, { 
             header: "A", 
             range: 10,
-            raw: true,
+            raw: false, // Ne pas convertir en valeurs brutes pour éviter les problèmes
             defval: ""
           });
           
@@ -233,8 +237,6 @@ export const insuranceStore = create<InsuranceStore>()(
           
           // Traitement de toutes les lignes d'un coup en gérant la mémoire
           const totalRows = allData.length - 1;
-          
-          let processedData: InsuranceData[] = [];
           
           // Mapper les colonnes selon les nouvelles spécifications
           const columnMatchers = {
@@ -276,187 +278,231 @@ export const insuranceStore = create<InsuranceStore>()(
           
           console.log("Mappage de colonnes réussi:", columnMapping);
           
-          // Process all rows at once with memory management
+          // Process all rows at once with memory management and optimize performance
           console.log(`Traitement de toutes les ${totalRows} lignes`);
           
           try {
-            // Process rows by chunks to avoid memory issues
-            const chunkSize = 5000;
-            for (let i = 1; i <= totalRows; i += chunkSize) {
-              const endIdx = Math.min(i + chunkSize, allData.length);
-              const rowsChunk = allData.slice(i, endIdx) as Record<string, any>[];
+            // Optimized processing - use a more efficient approach
+            const processedData: InsuranceData[] = [];
+            
+            // Skip the header row (index 0)
+            for (let i = 1; i < allData.length; i++) {
+              const row = allData[i] as Record<string, any>;
               
-              console.log(`Traitement du lot de lignes ${i} à ${endIdx-1}`);
+              // Skip completely empty rows
+              if (Object.values(row).every(val => !val)) {
+                continue;
+              }
               
-              const chunkResults = rowsChunk.map(row => {
-                const result: InsuranceData = {
-                  clientName: "",
-                  contractNumber: "",
-                  codeAgence: "",
-                  dateEmission: "",
-                  dateEcheance: "",
-                  totalAmount: 0,
-                  amountPaid: 0,
-                  remainingAmount: 0,
-                  timePassed: "",
-                  status: "Créance"
-                };
+              const result: InsuranceData = {
+                clientName: "",
+                contractNumber: "",
+                codeAgence: "",
+                dateEmission: "",
+                dateEcheance: "",
+                totalAmount: 0,
+                amountPaid: 0,
+                remainingAmount: 0,
+                timePassed: "",
+                status: "Créance"
+              };
+              
+              for (const [excelCol, targetField] of Object.entries(columnMapping)) {
+                const value = row[excelCol];
                 
-                for (const [excelCol, targetField] of Object.entries(columnMapping)) {
-                  const value = row[excelCol];
-                  
-                  switch(targetField) {
-                    case "Client Name":
-                      result.clientName = String(value || "");
-                      break;
-                    case "Contract Number":
-                      result.contractNumber = String(value || "").trim();
-                      break;
-                    case "Code Agence":
-                      result.codeAgence = String(value || "");
-                      break;
-                    case "Date Emission":
-                    case "Date Echeance":
-                      const fieldName = targetField === "Date Emission" ? "dateEmission" : "dateEcheance";
-                      let dateValue: Date | null = null;
-                      
-                      try {
-                        if (value instanceof Date) {
-                          dateValue = value;
-                        } else if (typeof value === 'number' && value > 10000) {
-                          // Excel date serial number
-                          dateValue = new Date(Math.round((value - 25569) * 86400 * 1000));
-                        } else if (typeof value === 'string' && value) {
-                          // Try to parse the string as a date
-                          const parsedDate = new Date(value);
-                          if (isValid(parsedDate)) {
-                            dateValue = parsedDate;
-                          }
-                        }
+                switch(targetField) {
+                  case "Client Name":
+                    result.clientName = String(value || "");
+                    break;
+                  case "Contract Number":
+                    // Ensure we treat contract numbers as strings, even if they appear numeric
+                    result.contractNumber = String(value || "").trim();
+                    break;
+                  case "Code Agence":
+                    result.codeAgence = String(value || "");
+                    break;
+                  case "Date Emission":
+                  case "Date Echeance":
+                    const fieldName = targetField === "Date Emission" ? "dateEmission" : "dateEcheance";
+                    let dateValue: Date | null = null;
+                    
+                    try {
+                      if (value instanceof Date) {
+                        dateValue = value;
+                      } else if (typeof value === 'number' && value > 10000) {
+                        // Excel date serial number
+                        dateValue = new Date(Math.round((value - 25569) * 86400 * 1000));
+                      } else if (typeof value === 'string' && value) {
+                        // Try different date formats
+                        const formatsToTry = [
+                          // Standard formats
+                          new Date(value),
+                          // DD/MM/YYYY
+                          new Date(value.split('/').reverse().join('-')),
+                          // DD-MM-YYYY
+                          new Date(value.split('-').reverse().join('-'))
+                        ];
                         
-                        // If we have a valid date value, format it and calculate time passed
-                        if (dateValue && isValid(dateValue)) {
-                          result[fieldName] = safeFormatDate(dateValue);
-                          
-                          // Calculer le temps écoulé seulement pour la date d'émission
-                          if (targetField === "Date Emission" && dateValue) {
-                            const daysPassed = safeDifferenceInDays(new Date(), dateValue);
-                            result.timePassed = convertDaysToMonthsDays(daysPassed);
+                        for (const date of formatsToTry) {
+                          if (isValid(date)) {
+                            dateValue = date;
+                            break;
                           }
                         }
-                      } catch (error) {
-                        console.error(`Error processing date for ${fieldName}:`, error);
                       }
-                      break;
-                    case "Total Amount Due":
-                      try {
-                        const amount = typeof value === 'number' 
-                          ? value 
-                          : parseFloat(String(value).replace(/[^\d.-]/g, ""));
-                        result.totalAmount = isNaN(amount) ? 0 : amount;
-                      } catch (error) {
-                        console.error("Error parsing total amount:", error);
-                        result.totalAmount = 0;
+                      
+                      // If we have a valid date value, format it and calculate time passed
+                      if (dateValue && isValid(dateValue)) {
+                        result[fieldName] = safeFormatDate(dateValue);
+                        
+                        // Calculer le temps écoulé seulement pour la date d'émission
+                        if (targetField === "Date Emission" && dateValue) {
+                          const daysPassed = safeDifferenceInDays(new Date(), dateValue);
+                          result.timePassed = convertDaysToMonthsDays(daysPassed);
+                        }
                       }
-                      break;
-                    case "Amount Paid":
-                      try {
-                        const paid = typeof value === 'number'
-                          ? value
-                          : parseFloat(String(value).replace(/[^\d.-]/g, ""));
-                        result.amountPaid = isNaN(paid) ? 0 : paid;
-                      } catch (error) {
-                        console.error("Error parsing paid amount:", error);
-                        result.amountPaid = 0;
+                    } catch (error) {
+                      console.error(`Error processing date for ${fieldName}:`, error);
+                    }
+                    break;
+                  case "Total Amount Due":
+                    try {
+                      let amount: number;
+                      if (typeof value === 'number') {
+                        amount = value;
+                      } else if (typeof value === 'string') {
+                        // Handle various number formats and clean them
+                        const cleanValue = value
+                          .replace(/\s/g, '')  // Remove spaces
+                          .replace(/,/g, '.') // Replace comma with dot
+                          .replace(/[^\d.-]/g, ""); // Keep only digits, dots and minus
+                          
+                        amount = parseFloat(cleanValue);
+                      } else {
+                        amount = 0;
                       }
-                      break;
-                    case "Remaining Amount":
-                      try {
-                        const remaining = typeof value === 'number'
-                          ? value
-                          : parseFloat(String(value).replace(/[^\d.-]/g, ""));
-                        result.remainingAmount = isNaN(remaining) ? 0 : remaining;
-                      } catch (error) {
-                        console.error("Error parsing remaining amount:", error);
-                        result.remainingAmount = 0;
+                      result.totalAmount = isNaN(amount) ? 0 : amount;
+                    } catch (error) {
+                      console.error("Error parsing total amount:", error);
+                      result.totalAmount = 0;
+                    }
+                    break;
+                  case "Amount Paid":
+                    try {
+                      let paid: number;
+                      if (typeof value === 'number') {
+                        paid = value;
+                      } else if (typeof value === 'string') {
+                        // Handle various number formats
+                        const cleanValue = value
+                          .replace(/\s/g, '')  // Remove spaces
+                          .replace(/,/g, '.') // Replace comma with dot
+                          .replace(/[^\d.-]/g, ""); // Keep only digits, dots and minus
+                          
+                        paid = parseFloat(cleanValue);
+                      } else {
+                        paid = 0;
                       }
-                      break;
-                  }
+                      result.amountPaid = isNaN(paid) ? 0 : paid;
+                    } catch (error) {
+                      console.error("Error parsing paid amount:", error);
+                      result.amountPaid = 0;
+                    }
+                    break;
+                  case "Remaining Amount":
+                    try {
+                      let remaining: number;
+                      if (typeof value === 'number') {
+                        remaining = value;
+                      } else if (typeof value === 'string') {
+                        // Handle various number formats
+                        const cleanValue = value
+                          .replace(/\s/g, '')  // Remove spaces
+                          .replace(/,/g, '.') // Replace comma with dot
+                          .replace(/[^\d.-]/g, ""); // Keep only digits, dots and minus
+                          
+                        remaining = parseFloat(cleanValue);
+                      } else {
+                        remaining = 0;
+                      }
+                      result.remainingAmount = isNaN(remaining) ? 0 : remaining;
+                    } catch (error) {
+                      console.error("Error parsing remaining amount:", error);
+                      result.remainingAmount = 0;
+                    }
+                    break;
                 }
-                
-                // Calculs et valeurs par défaut
-                if (result.totalAmount === 0 && result.amountPaid !== 0 && result.remainingAmount !== 0) {
-                  result.totalAmount = (result.amountPaid || 0) + (result.remainingAmount || 0);
-                }
-                
-                if (result.amountPaid === 0 && result.totalAmount !== 0 && result.remainingAmount !== 0) {
-                  result.amountPaid = (result.totalAmount || 0) - (result.remainingAmount || 0);
-                }
-                
-                if (result.remainingAmount === 0 && result.totalAmount !== 0 && result.amountPaid !== 0) {
-                  result.remainingAmount = (result.totalAmount || 0) - (result.amountPaid || 0);
-                }
-                
-                // Déterminer le statut avec les nouveaux noms
-                if (result.remainingAmount <= 0) {
-                  result.status = 'Recouvré';
-                } else if (result.remainingAmount < result.totalAmount) {
-                  result.status = 'Partiellement recouvré';
-                } else {
-                  result.status = 'Créance';
-                }
-                
-                return result;
-              });
+              }
               
-              processedData = [...processedData, ...chunkResults];
+              // Skip rows without client name or contract number
+              if (!result.clientName || !result.contractNumber) {
+                continue;
+              }
+              
+              // Calculs et valeurs par défaut
+              if (result.totalAmount === 0 && result.amountPaid !== 0 && result.remainingAmount !== 0) {
+                result.totalAmount = (result.amountPaid || 0) + (result.remainingAmount || 0);
+              }
+              
+              if (result.amountPaid === 0 && result.totalAmount !== 0 && result.remainingAmount !== 0) {
+                result.amountPaid = (result.totalAmount || 0) - (result.remainingAmount || 0);
+              }
+              
+              if (result.remainingAmount === 0 && result.totalAmount !== 0 && result.amountPaid !== 0) {
+                result.remainingAmount = (result.totalAmount || 0) - (result.amountPaid || 0);
+              }
+              
+              // Déterminer le statut avec les nouveaux noms
+              if (result.remainingAmount <= 0) {
+                result.status = 'Recouvré';
+              } else if (result.remainingAmount < result.totalAmount) {
+                result.status = 'Partiellement recouvré';
+              } else {
+                result.status = 'Créance';
+              }
+              
+              processedData.push(result);
             }
             
+            console.log(`Données valides extraites: ${processedData.length} entrées`);
+            
+            // Mettre à jour le store - si un contrat existe déjà, mettre à jour ses valeurs
+            set(state => {
+              const existingData = [...state.insuranceData];
+              const existingContractMap = new Map<string, number>();
+              
+              // Créer un map des contrats existants avec leur index dans le tableau
+              existingData.forEach((item, index) => {
+                existingContractMap.set(item.contractNumber, index);
+              });
+              
+              // Mettre à jour ou ajouter les données
+              processedData.forEach(newItem => {
+                if (existingContractMap.has(newItem.contractNumber)) {
+                  // Mettre à jour le contrat existant
+                  const index = existingContractMap.get(newItem.contractNumber)!;
+                  existingData[index] = {
+                    ...existingData[index],
+                    remainingAmount: newItem.remainingAmount,
+                    amountPaid: newItem.amountPaid || existingData[index].amountPaid,
+                    status: newItem.status,
+                    codeAgence: newItem.codeAgence || existingData[index].codeAgence
+                  };
+                } else {
+                  // Ajouter le nouveau contrat
+                  existingData.push(newItem);
+                }
+              });
+              
+              return { insuranceData: existingData };
+            });
+            
+            console.log("Traitement du fichier Excel terminé avec succès");
+            
           } catch (error) {
-            console.error(`Erreur lors du traitement des données:`, error);
-            // Continue with existing data
+            console.error("Erreur lors du traitement des données:", error);
+            throw error;
           }
-          
-          // Filtrer les données incomplètes
-          const validData = processedData.filter(
-            item => item.clientName && item.contractNumber
-          );
-          
-          console.log(`Données valides extraites: ${validData.length} entrées`);
-          
-          // Mettre à jour le store - si un contrat existe déjà, mettre à jour ses valeurs
-          set(state => {
-            const existingData = [...state.insuranceData];
-            const existingContractMap = new Map<string, number>();
-            
-            // Créer un map des contrats existants avec leur index dans le tableau
-            existingData.forEach((item, index) => {
-              existingContractMap.set(item.contractNumber, index);
-            });
-            
-            // Mettre à jour ou ajouter les données
-            validData.forEach(newItem => {
-              if (existingContractMap.has(newItem.contractNumber)) {
-                // Mettre à jour le contrat existant
-                const index = existingContractMap.get(newItem.contractNumber)!;
-                existingData[index] = {
-                  ...existingData[index],
-                  remainingAmount: newItem.remainingAmount,
-                  amountPaid: newItem.amountPaid || existingData[index].amountPaid,
-                  status: newItem.status,
-                  codeAgence: newItem.codeAgence || existingData[index].codeAgence
-                };
-              } else {
-                // Ajouter le nouveau contrat
-                existingData.push(newItem);
-              }
-            });
-            
-            return { insuranceData: existingData };
-          });
-          
-          console.log("Traitement du fichier Excel terminé avec succès");
-          
         } catch (error) {
           console.error("Erreur lors du traitement du fichier:", error);
           throw error;
