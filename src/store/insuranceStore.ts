@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import * as XLSX from 'xlsx';
 import { format, differenceInDays } from 'date-fns';
@@ -97,12 +96,13 @@ const findBestColumnMatch = (columns: string[], possibleMatches: string[]): stri
   return null;
 };
 
-type InsuranceStatus = 'Payé' | 'Partiellement payé' | 'Impayé';
+type InsuranceStatus = 'Recouvré' | 'Partiellement recouvré' | 'Créance';
 
 interface InsuranceData {
   contractNumber: string;
   clientName: string;
   dateEmission: string;
+  dateEcheance: string;
   totalAmount: number;
   amountPaid: number;
   remainingAmount: number;
@@ -145,25 +145,35 @@ export const insuranceStore = create<InsuranceStore>()(
           // Lire le fichier Excel
           const data = await file.arrayBuffer();
           const workbook = XLSX.read(data);
-          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: "A" });
           
-          if (jsonData.length <= 1) {
-            throw new Error("Fichier vide ou mal formaté");
+          // Cibler spécifiquement la feuille 2 nommée "Etat des Créances DSI"
+          const sheetName = "Etat des Créances DSI";
+          if (!workbook.SheetNames.includes(sheetName)) {
+            throw new Error(`Feuille "${sheetName}" non trouvée dans le fichier Excel`);
+          }
+          
+          const worksheet = workbook.Sheets[sheetName];
+          
+          // Obtenir toutes les données de la feuille
+          const allData = XLSX.utils.sheet_to_json(worksheet, { header: "A", range: 10 }); // Commencer à la ligne 11 (index 10)
+          
+          if (allData.length <= 1) {
+            throw new Error("Données insuffisantes dans la feuille spécifiée");
           }
           
           // Obtenir les en-têtes
-          const headers = jsonData[0] as Record<string, any>;
-          const rows = jsonData.slice(1) as Record<string, any>[];
+          const headers = allData[0] as Record<string, any>;
+          const rows = allData.slice(1) as Record<string, any>[];
           
-          // Mapper les colonnes
+          // Mapper les colonnes selon les nouvelles spécifications
           const columnMatchers = {
-            "Client Name": ["assure", "assuré", "client name", "client", "nom", "assure"],
-            "Contract Number": ["no police", "no_police", "numero_police", "police", "contrat"],
-            "Date Emission": ["emission", "date", "date_emission", "date d'emission"],
-            "Total Amount Due": ["net a payer", "net à payer", "net_a_payer", "montant", "total"],
-            "Amount Paid": ["montant_paye", "montant_payé", "amount_paid", "montant encaissé", "paid", "paiement"],
-            "Remaining Amount": ["solde", "reste", "remaining", "restant", "remaining amount"]
+            "Client Name": ["assure", "assuré", "client name", "client", "nom", "assure", "assuré_cmpt"],
+            "Contract Number": ["no police", "police n°", "no_police", "numero_police", "police", "contrat"],
+            "Date Emission": ["date d'effet", "effet", "date effet", "emission", "date"],
+            "Date Echeance": ["date d'échéance", "échéance", "echeance", "date echeance"],
+            "Total Amount Due": ["ttc", "net a payer", "net à payer", "net_a_payer", "montant", "total"],
+            "Amount Paid": ["encst/recv/annul à m-1", "montant_paye", "montant_payé", "amount_paid", "montant encaissé", "paid", "paiement"],
+            "Remaining Amount": ["créances", "creances", "solde", "reste", "remaining", "restant", "remaining amount"]
           };
           
           const columnMapping: Record<string, string> = {};
@@ -205,6 +215,8 @@ export const insuranceStore = create<InsuranceStore>()(
                     String(value || "");
                   break;
                 case "Date Emission":
+                case "Date Echeance":
+                  const fieldName = targetField === "Date Emission" ? "dateEmission" : "dateEcheance";
                   let dateValue;
                   if (value instanceof Date) {
                     dateValue = value;
@@ -217,10 +229,13 @@ export const insuranceStore = create<InsuranceStore>()(
                     dateValue = new Date();
                   }
                   
-                  result.dateEmission = format(dateValue, 'yyyy-MM-dd');
-                  // Calculer le temps écoulé
-                  const daysPassed = differenceInDays(new Date(), dateValue);
-                  result.timePassed = convertDaysToMonthsDays(daysPassed);
+                  result[fieldName as keyof InsuranceData] = format(dateValue, 'yyyy-MM-dd');
+                  
+                  // Calculer le temps écoulé seulement pour la date d'émission
+                  if (targetField === "Date Emission") {
+                    const daysPassed = differenceInDays(new Date(), dateValue);
+                    result.timePassed = convertDaysToMonthsDays(daysPassed);
+                  }
                   break;
                 case "Total Amount Due":
                   const amount = parseFloat(String(value).replace(/[^\d.-]/g, ""));
@@ -250,17 +265,17 @@ export const insuranceStore = create<InsuranceStore>()(
               result.remainingAmount = (result.totalAmount || 0) - (result.amountPaid || 0);
             }
             
-            // Déterminer le statut
+            // Déterminer le statut avec les nouveaux noms
             if (result.remainingAmount !== undefined && result.totalAmount !== undefined) {
               if (result.remainingAmount <= 0) {
-                result.status = 'Payé';
+                result.status = 'Recouvré';
               } else if (result.remainingAmount < result.totalAmount) {
-                result.status = 'Partiellement payé';
+                result.status = 'Partiellement recouvré';
               } else {
-                result.status = 'Impayé';
+                result.status = 'Créance';
               }
             } else {
-              result.status = 'Impayé';
+              result.status = 'Créance';
             }
             
             return result;
@@ -357,7 +372,7 @@ export const insuranceStore = create<InsuranceStore>()(
         // Filtrer les contrats en retard selon la période définie (en jours)
         const now = new Date();
         const overdueContracts = insuranceData.filter(contract => {
-          if (contract.status === 'Payé') return false;
+          if (contract.status === 'Recouvré') return false;
           
           const emissionDate = new Date(contract.dateEmission);
           const daysPassed = differenceInDays(now, emissionDate);
@@ -441,13 +456,12 @@ export const insuranceStore = create<InsuranceStore>()(
         }
       },
       
-      // Nouvelle fonction pour obtenir les 5 plus grands débiteurs
       getTopDebtors: (count = 5) => {
         const { insuranceData } = get();
         
         // Filtrer les contrats impayés ou partiellement payés
         const debtors = insuranceData
-          .filter(item => item.status !== 'Payé')
+          .filter(item => item.status !== 'Recouvré')
           .map(item => ({
             clientName: item.clientName,
             remainingAmount: item.remainingAmount

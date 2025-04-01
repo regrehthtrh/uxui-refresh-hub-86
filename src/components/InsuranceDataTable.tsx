@@ -27,7 +27,8 @@ const InsuranceDataTable = () => {
   const { 
     insuranceData,
     loadFile,
-    resetData
+    resetData,
+    getTopDebtors
   } = insuranceStore();
   
   const handleLoadFile = () => {
@@ -88,18 +89,18 @@ const InsuranceDataTable = () => {
 
   const getStatusColor = (status: string) => {
     switch(status) {
-      case "Payé": return "text-green-600";
-      case "Partiellement payé": return "text-amber-500";
-      case "Impayé": return "text-red-600";
+      case "Recouvré": return "text-green-600";
+      case "Partiellement recouvré": return "text-amber-500";
+      case "Créance": return "text-red-600";
       default: return "";
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch(status) {
-      case "Payé": return "🟢";
-      case "Partiellement payé": return "🟡";
-      case "Impayé": return "🔴";
+      case "Recouvré": return "🟢";
+      case "Partiellement recouvré": return "🟡";
+      case "Créance": return "🔴";
       default: return "";
     }
   };
@@ -117,9 +118,9 @@ const InsuranceDataTable = () => {
     // Filtre de statut
     if (statusFilter !== "all") {
       const statusMapping: Record<string, string> = {
-        "paid": "Payé",
-        "partial": "Partiellement payé",
-        "unpaid": "Impayé"
+        "paid": "Recouvré",
+        "partial": "Partiellement recouvré",
+        "unpaid": "Créance"
       };
       if (item.status !== statusMapping[statusFilter]) return false;
     }
@@ -138,9 +139,9 @@ const InsuranceDataTable = () => {
   });
 
   // Statistiques pour l'affichage du résumé
-  const paidCount = filteredData.filter(item => item.status === "Payé").length;
-  const partialCount = filteredData.filter(item => item.status === "Partiellement payé").length;
-  const unpaidCount = filteredData.filter(item => item.status === "Impayé").length;
+  const paidCount = filteredData.filter(item => item.status === "Recouvré").length;
+  const partialCount = filteredData.filter(item => item.status === "Partiellement recouvré").length;
+  const unpaidCount = filteredData.filter(item => item.status === "Créance").length;
   const totalCount = filteredData.length;
 
   return (
@@ -182,19 +183,19 @@ const InsuranceDataTable = () => {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Statut: Tous</SelectItem>
-            <SelectItem value="paid">Statut: Payé</SelectItem>
-            <SelectItem value="partial">Statut: Partiellement payé</SelectItem>
-            <SelectItem value="unpaid">Statut: Impayé</SelectItem>
+            <SelectItem value="paid">Statut: Recouvré</SelectItem>
+            <SelectItem value="partial">Statut: Partiellement recouvré</SelectItem>
+            <SelectItem value="unpaid">Statut: Créance</SelectItem>
           </SelectContent>
         </Select>
         
         <Select value={dateSort} onValueChange={setDateSort}>
           <SelectTrigger className="w-60">
-            <SelectValue placeholder="Date d'émission: Croissant" />
+            <SelectValue placeholder="Date d'effet: Croissant" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ascending">Date d'émission: Croissant</SelectItem>
-            <SelectItem value="descending">Date d'émission: Décroissant</SelectItem>
+            <SelectItem value="ascending">Date d'effet: Croissant</SelectItem>
+            <SelectItem value="descending">Date d'effet: Décroissant</SelectItem>
           </SelectContent>
         </Select>
         
@@ -210,12 +211,13 @@ const InsuranceDataTable = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="font-medium">N° Police</TableHead>
+                  <TableHead className="font-medium">Police N°</TableHead>
                   <TableHead className="font-medium">Assuré</TableHead>
-                  <TableHead className="font-medium">Date d'émission</TableHead>
-                  <TableHead className="font-medium">Net à Payer</TableHead>
+                  <TableHead className="font-medium">Date D'effet</TableHead>
+                  <TableHead className="font-medium">Date D'échéance</TableHead>
+                  <TableHead className="font-medium">TTC</TableHead>
                   <TableHead className="font-medium">Montant encaissé</TableHead>
-                  <TableHead className="font-medium">Solde</TableHead>
+                  <TableHead className="font-medium">Créances</TableHead>
                   <TableHead className="font-medium">Temps écoulé</TableHead>
                   <TableHead className="font-medium">Statut de paiement</TableHead>
                   <TableHead className="w-10"></TableHead>
@@ -224,7 +226,7 @@ const InsuranceDataTable = () => {
               <TableBody>
                 {sortedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-16 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-16 text-muted-foreground">
                       Aucune donnée disponible. Veuillez charger un fichier.
                     </TableCell>
                   </TableRow>
@@ -234,10 +236,11 @@ const InsuranceDataTable = () => {
                       <TableCell>{row.contractNumber}</TableCell>
                       <TableCell>{row.clientName}</TableCell>
                       <TableCell>{row.dateEmission}</TableCell>
+                      <TableCell>{row.dateEcheance}</TableCell>
                       <TableCell>{row.totalAmount} DZD</TableCell>
                       <TableCell>{row.amountPaid} DZD</TableCell>
                       <TableCell>{row.remainingAmount} DZD</TableCell>
-                      <TableCell className={row.status !== "Payé" ? "text-red-500" : ""}>
+                      <TableCell className={row.status !== "Recouvré" ? "text-red-500" : ""}>
                         {row.timePassed}
                       </TableCell>
                       <TableCell className={getStatusColor(row.status)}>
@@ -272,9 +275,9 @@ const InsuranceDataTable = () => {
           <div className="text-center">
             <p className="text-base font-medium">
               Statut global : 
-              <span className="text-green-600 mx-1">🟢 {paidCount} Payé</span>,
-              <span className="text-amber-500 mx-1">🟡 {partialCount} Partiellement payé</span>,
-              <span className="text-red-600 mx-1">🔴 {unpaidCount} Impayé</span>
+              <span className="text-green-600 mx-1">🟢 {paidCount} Recouvré</span>,
+              <span className="text-amber-500 mx-1">🟡 {partialCount} Partiellement recouvré</span>,
+              <span className="text-red-600 mx-1">🔴 {unpaidCount} Créance</span>
               (Total : {totalCount})
             </p>
           </div>
