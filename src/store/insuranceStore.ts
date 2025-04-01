@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import * as XLSX from 'xlsx';
 import { format, differenceInDays, isValid } from 'date-fns';
@@ -232,10 +231,8 @@ export const insuranceStore = create<InsuranceStore>()(
           const headers = allData[0] as Record<string, any>;
           console.log("En-têtes de colonnes:", Object.values(headers));
           
-          // Modifier la taille des lots pour traiter toutes les lignes
-          const batchSize = Math.max(allData.length, 5000); // Utiliser une très grande taille pour traiter tout en une fois
+          // Traitement de toutes les lignes d'un coup en gérant la mémoire
           const totalRows = allData.length - 1;
-          const batches = Math.ceil(totalRows / batchSize);
           
           let processedData: InsuranceData[] = [];
           
@@ -279,21 +276,23 @@ export const insuranceStore = create<InsuranceStore>()(
           
           console.log("Mappage de colonnes réussi:", columnMapping);
           
-          // Traiter les données par lots
-          for (let i = 0; i < batches; i++) {
-            const start = i * batchSize + 1; // +1 pour sauter les en-têtes
-            const end = Math.min((i + 1) * batchSize + 1, allData.length);
-            
-            const batchRows = allData.slice(start, end) as Record<string, any>[];
-            console.log(`Traitement du lot ${i+1}/${batches} (lignes ${start} à ${end-1})`);
-            
-            try {
-              // Traiter chaque ligne du lot
-              const batchResults = batchRows.map(row => {
-                const result: Partial<InsuranceData> = {
+          // Process all rows at once with memory management
+          console.log(`Traitement de toutes les ${totalRows} lignes`);
+          
+          try {
+            // Process rows by chunks to avoid memory issues
+            const chunkSize = 5000;
+            for (let i = 1; i <= totalRows; i += chunkSize) {
+              const endIdx = Math.min(i + chunkSize, allData.length);
+              const rowsChunk = allData.slice(i, endIdx) as Record<string, any>[];
+              
+              console.log(`Traitement du lot de lignes ${i} à ${endIdx-1}`);
+              
+              const chunkResults = rowsChunk.map(row => {
+                const result: InsuranceData = {
                   clientName: "",
                   contractNumber: "",
-                  codeAgence: "", 
+                  codeAgence: "",
                   dateEmission: "",
                   dateEcheance: "",
                   totalAmount: 0,
@@ -311,7 +310,7 @@ export const insuranceStore = create<InsuranceStore>()(
                       result.clientName = String(value || "");
                       break;
                     case "Contract Number":
-                      result.contractNumber = String(value || "");
+                      result.contractNumber = String(value || "").trim();
                       break;
                     case "Code Agence":
                       result.codeAgence = String(value || "");
@@ -337,19 +336,16 @@ export const insuranceStore = create<InsuranceStore>()(
                         
                         // If we have a valid date value, format it and calculate time passed
                         if (dateValue && isValid(dateValue)) {
-                          result[fieldName as keyof InsuranceData] = safeFormatDate(dateValue);
+                          result[fieldName] = safeFormatDate(dateValue);
                           
                           // Calculer le temps écoulé seulement pour la date d'émission
                           if (targetField === "Date Emission" && dateValue) {
                             const daysPassed = safeDifferenceInDays(new Date(), dateValue);
                             result.timePassed = convertDaysToMonthsDays(daysPassed);
                           }
-                        } else {
-                          result[fieldName as keyof InsuranceData] = "";
                         }
                       } catch (error) {
                         console.error(`Error processing date for ${fieldName}:`, error);
-                        result[fieldName as keyof InsuranceData] = "";
                       }
                       break;
                     case "Total Amount Due":
@@ -402,26 +398,23 @@ export const insuranceStore = create<InsuranceStore>()(
                 }
                 
                 // Déterminer le statut avec les nouveaux noms
-                let statusValue: InsuranceStatus = "Créance";
-                
                 if (result.remainingAmount <= 0) {
-                  statusValue = 'Recouvré';
+                  result.status = 'Recouvré';
                 } else if (result.remainingAmount < result.totalAmount) {
-                  statusValue = 'Partiellement recouvré';
+                  result.status = 'Partiellement recouvré';
                 } else {
-                  statusValue = 'Créance';
+                  result.status = 'Créance';
                 }
                 
-                result.status = statusValue;
-                
-                return result as InsuranceData;
+                return result;
               });
               
-              processedData = [...processedData, ...batchResults];
-            } catch (error) {
-              console.error(`Erreur lors du traitement du lot ${i+1}:`, error);
-              // Continue with other batches
+              processedData = [...processedData, ...chunkResults];
             }
+            
+          } catch (error) {
+            console.error(`Erreur lors du traitement des données:`, error);
+            // Continue with existing data
           }
           
           // Filtrer les données incomplètes
