@@ -237,9 +237,9 @@ const InsuranceDataTable = () => {
                       <TableCell>{row.clientName}</TableCell>
                       <TableCell>{row.dateEmission}</TableCell>
                       <TableCell>{row.dateEcheance}</TableCell>
-                      <TableCell>{row.totalAmount} DZD</TableCell>
-                      <TableCell>{row.amountPaid} DZD</TableCell>
-                      <TableCell>{row.remainingAmount} DZD</TableCell>
+                      <TableCell>{row.totalAmount.toLocaleString()} DZD</TableCell>
+                      <TableCell>{row.amountPaid.toLocaleString()} DZD</TableCell>
+                      <TableCell>{row.remainingAmount.toLocaleString()} DZD</TableCell>
                       <TableCell className={row.status !== "Recouvré" ? "text-red-500" : ""}>
                         {row.timePassed}
                       </TableCell>

@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import * as XLSX from 'xlsx';
 import { format, differenceInDays } from 'date-fns';
@@ -146,13 +147,20 @@ export const insuranceStore = create<InsuranceStore>()(
           const data = await file.arrayBuffer();
           const workbook = XLSX.read(data);
           
-          // Cibler spécifiquement la feuille 2 nommée "Etat des Créances DSI"
+          // Vérifier si la feuille spécifiée existe
           const sheetName = "Etat des Créances DSI";
           if (!workbook.SheetNames.includes(sheetName)) {
-            throw new Error(`Feuille "${sheetName}" non trouvée dans le fichier Excel`);
+            // Essayer avec la première feuille si celle recherchée n'existe pas
+            console.log(`Feuille "${sheetName}" non trouvée, utilisation de la première feuille`);
+            if (workbook.SheetNames.length === 0) {
+              throw new Error("Le fichier Excel ne contient aucune feuille");
+            }
           }
           
-          const worksheet = workbook.Sheets[sheetName];
+          // Utiliser la feuille spécifiée ou la première disponible
+          const targetSheetName = workbook.SheetNames.includes(sheetName) ? 
+                                 sheetName : workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[targetSheetName];
           
           // Obtenir toutes les données de la feuille
           const allData = XLSX.utils.sheet_to_json(worksheet, { header: "A", range: 10 }); // Commencer à la ligne 11 (index 10)
