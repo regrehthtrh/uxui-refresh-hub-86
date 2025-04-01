@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from "react";
 import { 
   Table, TableBody, TableCell, TableHead, 
@@ -41,8 +40,7 @@ const InsuranceDataTable = () => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
     
-    // Vérification de la taille du fichier
-    const maxSizeMB = 50; // Increased from 20 to 50 MB
+    const maxSizeMB = 50;
     const fileSizeMB = files[0].size / (1024 * 1024);
     
     if (fileSizeMB > maxSizeMB) {
@@ -52,7 +50,6 @@ const InsuranceDataTable = () => {
         variant: "destructive"
       });
       
-      // Reset the input value so the same file can be loaded again if needed
       if (event.target) event.target.value = "";
       return;
     }
@@ -81,7 +78,6 @@ const InsuranceDataTable = () => {
       });
     } finally {
       setIsLoading(false);
-      // Reset the input value so the same file can be loaded again if needed
       if (event.target) event.target.value = "";
     }
   };
@@ -132,13 +128,10 @@ const InsuranceDataTable = () => {
     }
   };
 
-  // Appliquer les filtres sur les données
   const filteredData = insuranceData.filter(item => {
-    // Filtre de recherche
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       
-      // Improved search functionality to check multiple fields (case insensitive)
       const matchesClientName = item.clientName?.toLowerCase().includes(query);
       const matchesContractNumber = item.contractNumber?.toLowerCase().includes(query);
       const matchesCodeAgence = item.codeAgence?.toLowerCase().includes(query);
@@ -146,7 +139,6 @@ const InsuranceDataTable = () => {
       if (!matchesClientName && !matchesContractNumber && !matchesCodeAgence) return false;
     }
     
-    // Filtre de statut
     if (statusFilter !== "all") {
       const statusMapping: Record<string, string> = {
         "paid": "Recouvré",
@@ -159,7 +151,6 @@ const InsuranceDataTable = () => {
     return true;
   });
 
-  // Tri par date (si nécessaire)
   const sortedData = [...filteredData].sort((a, b) => {
     const dateA = new Date(a.dateEmission).getTime();
     const dateB = new Date(b.dateEmission).getTime();
@@ -169,7 +160,6 @@ const InsuranceDataTable = () => {
       : dateB - dateA;
   });
 
-  // Statistiques pour l'affichage du résumé
   const paidCount = filteredData.filter(item => item.status === "Recouvré").length;
   const partialCount = filteredData.filter(item => item.status === "Partiellement recouvré").length;
   const unpaidCount = filteredData.filter(item => item.status === "Créance").length;
@@ -286,7 +276,11 @@ const InsuranceDataTable = () => {
                       <TableCell className="text-center font-medium text-muted-foreground">
                         {index + 1}
                       </TableCell>
-                      <TableCell>{row.contractNumber}</TableCell>
+                      <TableCell>
+                        <div className="font-medium whitespace-nowrap overflow-visible">
+                          {row.contractNumber}
+                        </div>
+                      </TableCell>
                       <TableCell className="max-w-48">
                         <div className="truncate" title={row.clientName}>
                           {row.clientName}

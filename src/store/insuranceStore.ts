@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import * as XLSX from 'xlsx';
 import { format, differenceInDays, isValid } from 'date-fns';
@@ -184,7 +183,6 @@ export const insuranceStore = create<InsuranceStore>()(
             type: 'array',     // Optimisé pour les fichiers volumineux
             cellDates: true,   // Convertir les dates en objets Date automatiquement
             dateNF: 'yyyy-mm-dd', // Format de date par défaut
-            rawNumbers: false, // Conserver les formats pour les nombres
           });
           
           console.log("Workbook chargé, feuilles disponibles:", workbook.SheetNames);
@@ -319,15 +317,17 @@ export const insuranceStore = create<InsuranceStore>()(
               
               for (const [excelCol, targetField] of Object.entries(columnMapping)) {
                 if (targetField === "Contract Number") {
-                  // Always store contract numbers as strings, handle all types of input
+                  // Improved handling for contract numbers
                   let value = row[excelCol];
                   if (value === undefined || value === null) {
-                    value = `Unknown-${i}`;  // Generate a unique ID for rows without contract numbers
+                    value = `Pas de N° ${i}`;  // Better label for missing contract numbers
                   } else {
-                    // Ensure we treat contract numbers as strings, even if they appear numeric
+                    // Ensure we treat contract numbers as strings, handle special formats like P/A16004/4/24/000284
                     value = String(value).trim();
-                    if (value === "") {
-                      value = `Unknown-${i}`;  // Generate a unique ID for rows with empty contract numbers
+                    
+                    // If value is empty or just contains special characters that might render as ###
+                    if (value === "" || /^[#]+$/.test(value)) {
+                      value = `Pas de N° ${i}`;
                     }
                   }
                   result.contractNumber = value;
@@ -340,7 +340,7 @@ export const insuranceStore = create<InsuranceStore>()(
               
               // If we're missing key fields after special handling, generate them
               if (!hasContractNumber) {
-                result.contractNumber = `Unknown-${i}`;
+                result.contractNumber = `Pas de N° ${i}`;
               }
               if (!hasClientName) {
                 result.clientName = `Client-${i}`;
