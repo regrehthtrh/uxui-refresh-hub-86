@@ -21,7 +21,7 @@ const InsuranceDataTable = () => {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [dateSort, setDateSort] = useState("ascending");
+  const [dateSort, setDateSort] = useState("none");
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -29,7 +29,6 @@ const InsuranceDataTable = () => {
     insuranceData,
     loadFile,
     resetData,
-    getTopDebtors
   } = insuranceStore();
   
   const handleLoadFile = () => {
@@ -98,7 +97,7 @@ const InsuranceDataTable = () => {
   const handleResetFilters = () => {
     setSearchQuery("");
     setStatusFilter("all");
-    setDateSort("ascending");
+    setDateSort("none");
     
     toast({
       title: "Filtres réinitialisés",
@@ -138,9 +137,13 @@ const InsuranceDataTable = () => {
     // Filtre de recherche
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      const matchesClientName = item.clientName.toLowerCase().includes(query);
-      const matchesContractNumber = item.contractNumber.toLowerCase().includes(query);
-      if (!matchesClientName && !matchesContractNumber) return false;
+      
+      // Improved search functionality to check multiple fields (case insensitive)
+      const matchesClientName = item.clientName?.toLowerCase().includes(query);
+      const matchesContractNumber = item.contractNumber?.toLowerCase().includes(query);
+      const matchesCodeAgence = item.codeAgence?.toLowerCase().includes(query);
+      
+      if (!matchesClientName && !matchesContractNumber && !matchesCodeAgence) return false;
     }
     
     // Filtre de statut
@@ -156,8 +159,13 @@ const InsuranceDataTable = () => {
     return true;
   });
 
-  // Tri par date
+  // Tri par date (si nécessaire)
   const sortedData = [...filteredData].sort((a, b) => {
+    if (dateSort === "none") {
+      // Garder l'ordre original du fichier Excel
+      return 0;
+    }
+    
     const dateA = new Date(a.dateEmission).getTime();
     const dateB = new Date(b.dateEmission).getTime();
     
@@ -207,7 +215,7 @@ const InsuranceDataTable = () => {
       
       <div className="flex flex-wrap gap-4 items-center">
         <Input
-          placeholder="Rechercher un client..."
+          placeholder="Rechercher par client, police ou code agence..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="max-w-xs"
@@ -227,9 +235,10 @@ const InsuranceDataTable = () => {
         
         <Select value={dateSort} onValueChange={setDateSort}>
           <SelectTrigger className="w-60">
-            <SelectValue placeholder="Date d'effet: Croissant" />
+            <SelectValue placeholder="Ordre original" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="none">Ordre original</SelectItem>
             <SelectItem value="ascending">Date d'effet: Croissant</SelectItem>
             <SelectItem value="descending">Date d'effet: Décroissant</SelectItem>
           </SelectContent>
@@ -247,8 +256,10 @@ const InsuranceDataTable = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="font-medium w-12 text-center">#</TableHead>
                   <TableHead className="font-medium">Police N°</TableHead>
-                  <TableHead className="font-medium">Assuré</TableHead>
+                  <TableHead className="font-medium max-w-48">Assuré</TableHead>
+                  <TableHead className="font-medium">Code Agence</TableHead>
                   <TableHead className="font-medium">Date D'effet</TableHead>
                   <TableHead className="font-medium">Date D'échéance</TableHead>
                   <TableHead className="font-medium">TTC</TableHead>
@@ -262,7 +273,7 @@ const InsuranceDataTable = () => {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-16">
+                    <TableCell colSpan={12} className="text-center py-16">
                       <div className="flex flex-col items-center gap-2">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                         <p className="text-muted-foreground">Chargement des données...</p>
@@ -271,15 +282,23 @@ const InsuranceDataTable = () => {
                   </TableRow>
                 ) : sortedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-16 text-muted-foreground">
+                    <TableCell colSpan={12} className="text-center py-16 text-muted-foreground">
                       Aucune donnée disponible. Veuillez charger un fichier.
                     </TableCell>
                   </TableRow>
                 ) : (
                   sortedData.map((row, index) => (
                     <TableRow key={index}>
+                      <TableCell className="text-center font-medium text-muted-foreground">
+                        {index + 1}
+                      </TableCell>
                       <TableCell>{row.contractNumber}</TableCell>
-                      <TableCell>{row.clientName}</TableCell>
+                      <TableCell className="max-w-48">
+                        <div className="truncate" title={row.clientName}>
+                          {row.clientName}
+                        </div>
+                      </TableCell>
+                      <TableCell>{row.codeAgence}</TableCell>
                       <TableCell>{row.dateEmission}</TableCell>
                       <TableCell>{row.dateEcheance}</TableCell>
                       <TableCell>{row.totalAmount.toLocaleString()} DZD</TableCell>
