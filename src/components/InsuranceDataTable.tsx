@@ -256,17 +256,17 @@ const InsuranceDataTable = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="font-medium w-12 text-center">#</TableHead>
-                  <TableHead className="font-medium">Police N°</TableHead>
-                  <TableHead className="font-medium max-w-48">Assuré</TableHead>
-                  <TableHead className="font-medium">Code Agence</TableHead>
-                  <TableHead className="font-medium">Date D'effet</TableHead>
-                  <TableHead className="font-medium">Date D'échéance</TableHead>
-                  <TableHead className="font-medium">TTC</TableHead>
-                  <TableHead className="font-medium">Montant encaissé</TableHead>
-                  <TableHead className="font-medium">Créances</TableHead>
-                  <TableHead className="font-medium">Temps écoulé</TableHead>
-                  <TableHead className="font-medium">Statut de paiement</TableHead>
+                  <TableHead className="w-12 text-center">#</TableHead>
+                  <TableHead>Police N°</TableHead>
+                  <TableHead className="max-w-48">Assuré</TableHead>
+                  <TableHead>Code Agence</TableHead>
+                  <TableHead>Date D'effet</TableHead>
+                  <TableHead>Date D'échéance</TableHead>
+                  <TableHead>TTC</TableHead>
+                  <TableHead>Montant encaissé</TableHead>
+                  <TableHead>Créances</TableHead>
+                  <TableHead>Temps écoulé</TableHead>
+                  <TableHead>Statut de paiement</TableHead>
                   <TableHead className="w-10"></TableHead>
                 </TableRow>
               </TableHeader>

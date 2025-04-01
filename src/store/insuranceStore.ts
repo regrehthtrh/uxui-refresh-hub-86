@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import * as XLSX from 'xlsx';
 import { format, differenceInDays, isValid } from 'date-fns';
@@ -128,6 +129,7 @@ export type InsuranceStatus = 'Recouvré' | 'Partiellement recouvré' | 'Créanc
 interface InsuranceData {
   contractNumber: string;
   clientName: string;
+  codeAgence: string;
   dateEmission: string;
   dateEcheance: string;
   totalAmount: number;
@@ -230,8 +232,8 @@ export const insuranceStore = create<InsuranceStore>()(
           const headers = allData[0] as Record<string, any>;
           console.log("En-têtes de colonnes:", Object.values(headers));
           
-          // Extraire les données en lots pour réduire la charge mémoire
-          const batchSize = 500;
+          // Modifier la taille des lots pour traiter toutes les lignes
+          const batchSize = Math.max(allData.length, 5000); // Utiliser une très grande taille pour traiter tout en une fois
           const totalRows = allData.length - 1;
           const batches = Math.ceil(totalRows / batchSize);
           
@@ -241,6 +243,7 @@ export const insuranceStore = create<InsuranceStore>()(
           const columnMatchers = {
             "Client Name": ["assure", "assuré", "client name", "client", "nom", "assure", "assuré_cmpt"],
             "Contract Number": ["no police", "police n°", "no_police", "numero_police", "police", "contrat"],
+            "Code Agence": ["code agence", "code_agence", "agence", "code", "agency"],
             "Date Emission": ["date d'effet", "effet", "date effet", "emission", "date"],
             "Date Echeance": ["date d'échéance", "échéance", "echeance", "date echeance"],
             "Total Amount Due": ["ttc", "net a payer", "net à payer", "net_a_payer", "montant", "total"],
@@ -290,6 +293,7 @@ export const insuranceStore = create<InsuranceStore>()(
                 const result: Partial<InsuranceData> = {
                   clientName: "",
                   contractNumber: "",
+                  codeAgence: "", 
                   dateEmission: "",
                   dateEcheance: "",
                   totalAmount: 0,
@@ -308,6 +312,9 @@ export const insuranceStore = create<InsuranceStore>()(
                       break;
                     case "Contract Number":
                       result.contractNumber = String(value || "");
+                      break;
+                    case "Code Agence":
+                      result.codeAgence = String(value || "");
                       break;
                     case "Date Emission":
                     case "Date Echeance":
@@ -443,7 +450,8 @@ export const insuranceStore = create<InsuranceStore>()(
                   ...existingData[index],
                   remainingAmount: newItem.remainingAmount,
                   amountPaid: newItem.amountPaid || existingData[index].amountPaid,
-                  status: newItem.status
+                  status: newItem.status,
+                  codeAgence: newItem.codeAgence || existingData[index].codeAgence
                 };
               } else {
                 // Ajouter le nouveau contrat
