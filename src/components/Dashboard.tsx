@@ -1,316 +1,147 @@
 
 import React from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { insuranceStore } from "@/store/insuranceStore";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, LineChart, Line } from "recharts";
-import { FileUp, AlertCircle, Clock, Calendar, CheckCircle2, AlertTriangle, Activity, TrendingDown } from "lucide-react";
+import type { InsuranceStatus } from "@/store/insuranceStore";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { AlertCircle, Check, Clock, CreditCard, Users } from "lucide-react";
 
 const Dashboard = () => {
-  const { insuranceData, getTopDebtors } = insuranceStore();
+  const { insuranceData } = insuranceStore();
   
-  // Calculate statistics
-  const totalContracts = insuranceData.length;
-  const totalAmount = insuranceData.reduce((sum, contract) => sum + contract.totalAmount, 0);
-  const remainingAmount = insuranceData.reduce((sum, contract) => sum + contract.remainingAmount, 0);
-  const paidAmount = totalAmount - remainingAmount;
-  const collectionRate = totalAmount > 0 ? (paidAmount / totalAmount) * 100 : 0;
+  // Calculer les statistiques
+  const paidCount = insuranceData.filter(item => item.status === "Recouvré").length;
+  const partialCount = insuranceData.filter(item => item.status === "Partiellement recouvré").length;
+  const unpaidCount = insuranceData.filter(item => item.status === "Créance").length;
   
-  // Calculate risk metrics
-  const overdueCount = insuranceData.filter(contract => 
-    contract.status !== 'Payé' && 
-    new Date(contract.dateEmission) < new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-  ).length;
+  const totalClients = new Set(insuranceData.map(item => item.clientName)).size;
   
-  const riskExposure = insuranceData.reduce((sum, contract) => {
-    if (contract.status !== 'Payé') {
-      const age = new Date().getTime() - new Date(contract.dateEmission).getTime();
-      const ageInMonths = age / (30 * 24 * 60 * 60 * 1000);
-      // Risk increases with age
-      return sum + (contract.remainingAmount * (1 + ageInMonths / 12));
-    }
-    return sum;
-  }, 0);
+  // Calculer les montants totaux
+  const totalAmount = insuranceData.reduce((sum, item) => sum + item.totalAmount, 0);
+  const paidAmount = insuranceData.reduce((sum, item) => sum + item.amountPaid, 0);
+  const remainingAmount = insuranceData.reduce((sum, item) => sum + item.remainingAmount, 0);
   
-  // Get top debtors
-  const topDebtors = getTopDebtors(5);
+  // Calculate percentages
+  const paidPercentage = insuranceData.length > 0 
+    ? Math.round((paidCount / insuranceData.length) * 100) 
+    : 0;
   
-  // Status data for pie chart
-  const statusCounts = insuranceData.reduce((acc: {[key: string]: number}, contract) => {
-    acc[contract.status] = (acc[contract.status] || 0) + 1;
-    return acc;
-  }, {});
+  const collectionRate = totalAmount > 0 
+    ? Math.round((paidAmount / totalAmount) * 100) 
+    : 0;
   
-  const pieData = Object.entries(statusCounts).map(([status, count]) => ({
-    name: status,
-    value: count
-  }));
-  
-  // Monthly data for bar chart
-  const monthlyData = insuranceData.reduce((acc: {[key: string]: {total: number, paid: number}}, contract) => {
-    const month = new Date(contract.dateEmission).getMonth();
-    const monthName = new Date(0, month).toLocaleString('fr-FR', { month: 'short' });
-    
-    if (!acc[monthName]) {
-      acc[monthName] = { total: 0, paid: 0 };
-    }
-    
-    acc[monthName].total += contract.totalAmount;
-    acc[monthName].paid += (contract.totalAmount - contract.remainingAmount);
-    
-    return acc;
-  }, {});
-  
-  const barData = Object.entries(monthlyData).map(([month, data]) => ({
-    month,
-    total: data.total,
-    paid: data.paid
-  }));
-  
-  // Age analysis of contracts
-  const ageData = [
-    { name: '0-30 jours', count: 0, amount: 0 },
-    { name: '31-60 jours', count: 0, amount: 0 },
-    { name: '61-90 jours', count: 0, amount: 0 },
-    { name: '91-180 jours', count: 0, amount: 0 },
-    { name: '181+ jours', count: 0, amount: 0 }
-  ];
-  
-  insuranceData.forEach(contract => {
-    if (contract.status !== 'Payé') {
-      const emissionDate = new Date(contract.dateEmission);
-      const daysPassed = Math.floor((new Date().getTime() - emissionDate.getTime()) / (24 * 60 * 60 * 1000));
-      
-      let index;
-      if (daysPassed <= 30) index = 0;
-      else if (daysPassed <= 60) index = 1;
-      else if (daysPassed <= 90) index = 2;
-      else if (daysPassed <= 180) index = 3;
-      else index = 4;
-      
-      ageData[index].count++;
-      ageData[index].amount += contract.remainingAmount;
-    }
-  });
-  
-  // Colors for pie chart
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+  // Find oldest unpaid contract
+  const unpaidContracts = insuranceData.filter(item => item.status === "Créance");
+  let oldestUnpaid = "";
+  if (unpaidContracts.length > 0) {
+    const oldestDate = new Date(Math.min(...unpaidContracts.map(c => new Date(c.dateEmission).getTime())));
+    oldestUnpaid = oldestDate.toLocaleDateString();
+  }
   
   return (
-    <div className="space-y-8">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <FileUp className="h-4 w-4 text-[#004a80]" />
-              Contrats Totaux
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalContracts}</div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Activity className="h-4 w-4 text-[#004a80]" />
-              Montant Total
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalAmount.toLocaleString('fr-FR')} DZD</div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-amber-500" />
-              Montant Restant
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{remainingAmount.toLocaleString('fr-FR')} DZD</div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-green-500" />
-              Taux de Recouvrement
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{collectionRate.toFixed(1)}%</div>
-          </CardContent>
-        </Card>
-      </div>
-      
-      {/* Top Debtors and Risk Analysis */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingDown className="h-5 w-5 text-red-500" />
-              Top 5 Débiteurs
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {topDebtors.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">
-                Aucune donnée disponible
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {topDebtors.map((debtor, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm bg-muted w-5 h-5 rounded-full flex items-center justify-center">
-                        {index + 1}
-                      </span>
-                      <span className="font-medium">{debtor.clientName}</span>
-                    </div>
-                    <span className="font-bold text-red-500">
-                      {debtor.remainingAmount.toLocaleString('fr-FR')} DZD
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        
-        <div className="grid grid-cols-1 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Clock className="h-4 w-4 text-[#004a80]" />
-                Contrats en Retard
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{overdueCount}</div>
-              <p className="text-sm text-muted-foreground mt-1">
-                {((overdueCount / totalContracts) * 100).toFixed(1)}% du total
-              </p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
-                Exposition au Risque
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{riskExposure.toLocaleString('fr-FR')} DZD</div>
-              <p className="text-sm text-muted-foreground mt-1">
-                Basé sur l'âge et le montant restant
-              </p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-[#004a80]" />
-                Projection de Remboursement
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {paidAmount > 0 
-                  ? new Date(Date.now() + (remainingAmount / paidAmount) * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('fr-FR')
-                  : "N/A"}
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                Basé sur le taux de remboursement actuel
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-      
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Statut des Contrats</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-2">
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => [`${value} contrats`, '']} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>Montants par Mois</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-2">
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip formatter={(value) => `${value.toLocaleString('fr-FR')} DZD`} />
-                  <Legend />
-                  <Bar dataKey="total" name="Montant Total" fill="#004a80" />
-                  <Bar dataKey="paid" name="Montant Payé" fill="#82ca9d" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-      
-      {/* Age Analysis */}
+    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
       <Card>
-        <CardHeader>
-          <CardTitle>Analyse de l'Âge des Contrats Impayés</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle className="text-sm font-medium">
+            Total polices
+          </CardTitle>
+          <CreditCard className="w-4 h-4 text-gray-500" />
         </CardHeader>
-        <CardContent className="pt-2">
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={ageData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis yAxisId="left" orientation="left" stroke="#004a80" />
-                <YAxis yAxisId="right" orientation="right" stroke="#FF8042" />
-                <Tooltip formatter={(value, name) => {
-                  if (name === "count") return [`${value} contrats`, "Nombre"];
-                  return [`${Number(value).toLocaleString('fr-FR')} DZD`, "Montant"];
-                }} />
-                <Legend />
-                <Bar yAxisId="left" dataKey="count" name="Nombre de Contrats" fill="#004a80" />
-                <Bar yAxisId="right" dataKey="amount" name="Montant (DZD)" fill="#FF8042" />
-              </BarChart>
-            </ResponsiveContainer>
+        <CardContent>
+          <div className="text-2xl font-bold">{insuranceData.length}</div>
+          <p className="text-xs text-gray-500 mt-1">
+            {paidCount} recouvrées, {partialCount} partiellement recouvrées, {unpaidCount} en créance
+          </p>
+        </CardContent>
+        <CardFooter className="p-2">
+          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-green-500 rounded-full" 
+              style={{ width: `${paidPercentage}%` }}
+            />
           </div>
+        </CardFooter>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle className="text-sm font-medium">
+            Montant total
+          </CardTitle>
+          <Check className="w-4 h-4 text-gray-500" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{totalAmount.toLocaleString()} DZD</div>
+          <p className="text-xs text-gray-500 mt-1">
+            {paidAmount.toLocaleString()} DZD encaissés
+          </p>
+          <div className="mt-3">
+            <Separator className="my-2" />
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Taux de recouvrement:</span>
+              <span className="font-medium">{collectionRate}%</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle className="text-sm font-medium">
+            Total clients
+          </CardTitle>
+          <Users className="w-4 h-4 text-gray-500" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{totalClients}</div>
+          <div className="mt-3">
+            <Separator className="my-2" />
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Moyenne par client:</span>
+              <span className="font-medium">
+                {totalClients > 0 
+                  ? Math.round(insuranceData.length / totalClients * 10) / 10 
+                  : 0} polices
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle className="text-sm font-medium">
+            Montant restant à recouvrer
+          </CardTitle>
+          <AlertCircle className="w-4 h-4 text-red-500" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{remainingAmount.toLocaleString()} DZD</div>
+          <p className="text-xs text-red-500 mt-1">
+            {unpaidCount} polices en créance
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardTitle className="text-sm font-medium">
+            Plus ancienne créance
+          </CardTitle>
+          <Clock className="w-4 h-4 text-gray-500" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-xl font-bold">{oldestUnpaid || "N/A"}</div>
+          <p className="text-xs text-gray-500 mt-1">
+            {unpaidCount > 0 ? `Sur ${unpaidCount} polices en créance` : "Aucune créance"}
+          </p>
         </CardContent>
       </Card>
     </div>

@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { insuranceStore } from "@/store/insuranceStore";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, FileUp, RefreshCw, MoreHorizontal, X } from "lucide-react";
+import { Copy, FileUp, RefreshCw, MoreHorizontal, X, Loader2 } from "lucide-react";
 import ConfirmResetDialog from "./ConfirmResetDialog";
 
 const InsuranceDataTable = () => {
@@ -22,6 +22,7 @@ const InsuranceDataTable = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateSort, setDateSort] = useState("ascending");
+  const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const { 
@@ -41,22 +42,49 @@ const InsuranceDataTable = () => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
     
+    // Vérification de la taille du fichier
+    const maxSizeMB = 20; // Limite de 20 MB
+    const fileSizeMB = files[0].size / (1024 * 1024);
+    
+    if (fileSizeMB > maxSizeMB) {
+      toast({
+        title: "Fichier trop volumineux",
+        description: `Le fichier dépasse la limite de ${maxSizeMB} MB. Veuillez réduire sa taille.`,
+        variant: "destructive"
+      });
+      
+      // Reset the input value so the same file can be loaded again if needed
+      if (event.target) event.target.value = "";
+      return;
+    }
+    
+    setIsLoading(true);
+    
     try {
+      toast({
+        title: "Chargement en cours",
+        description: "Traitement du fichier Excel, veuillez patienter...",
+      });
+      
       await loadFile(files[0]);
+      
       toast({
         title: "Chargement réussi",
         description: "Le fichier a été chargé avec succès.",
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Erreur lors du traitement du fichier:", error);
+      
       toast({
         title: "Erreur",
-        description: "Impossible de charger le fichier. Veuillez vérifier le format.",
+        description: `Impossible de charger le fichier: ${error.message || "Veuillez vérifier le format"}`,
         variant: "destructive"
       });
+    } finally {
+      setIsLoading(false);
+      // Reset the input value so the same file can be loaded again if needed
+      if (event.target) event.target.value = "";
     }
-    
-    // Reset the input value so the same file can be loaded again if needed
-    if (event.target) event.target.value = "";
   };
   
   const handleResetData = () => {
@@ -155,9 +183,17 @@ const InsuranceDataTable = () => {
             accept=".xlsx,.xls"
             className="hidden"
           />
-          <Button onClick={handleLoadFile} className="flex items-center gap-2">
-            <FileUp className="h-4 w-4" />
-            Charger Fichier
+          <Button 
+            onClick={handleLoadFile} 
+            className="flex items-center gap-2"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileUp className="h-4 w-4" />
+            )}
+            {isLoading ? "Chargement..." : "Charger Fichier"}
           </Button>
           
           <ConfirmResetDialog onConfirm={handleResetData}>
@@ -224,7 +260,16 @@ const InsuranceDataTable = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedData.length === 0 ? (
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center py-16">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <p className="text-muted-foreground">Chargement des données...</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : sortedData.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={10} className="text-center py-16 text-muted-foreground">
                       Aucune donnée disponible. Veuillez charger un fichier.

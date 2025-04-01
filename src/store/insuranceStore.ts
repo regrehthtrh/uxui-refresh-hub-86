@@ -97,7 +97,8 @@ const findBestColumnMatch = (columns: string[], possibleMatches: string[]): stri
   return null;
 };
 
-type InsuranceStatus = 'Recouvré' | 'Partiellement recouvré' | 'Créance';
+// Définir les types corrects
+export type InsuranceStatus = 'Recouvré' | 'Partiellement recouvré' | 'Créance';
 
 interface InsuranceData {
   contractNumber: string;
@@ -143,27 +144,58 @@ export const insuranceStore = create<InsuranceStore>()(
       
       loadFile: async (file) => {
         try {
-          // Lire le fichier Excel
+          console.log("Début du traitement du fichier Excel de taille:", file.size);
+          
+          // Lire le fichier Excel avec un traitement de fichiers volumineux
           const data = await file.arrayBuffer();
-          const workbook = XLSX.read(data);
+          console.log("Fichier converti en ArrayBuffer, taille:", data.byteLength);
+          
+          const workbook = XLSX.read(data, {
+            cellFormula: false, // Désactiver les formules pour améliorer les performances
+            cellHTML: false,   // Désactiver le HTML pour améliorer les performances
+            cellText: true     // Activer le texte brut pour améliorer les performances
+          });
+          console.log("Workbook chargé, feuilles disponibles:", workbook.SheetNames);
           
           // Vérifier si la feuille spécifiée existe
           const sheetName = "Etat des Créances DSI";
-          if (!workbook.SheetNames.includes(sheetName)) {
-            // Essayer avec la première feuille si celle recherchée n'existe pas
-            console.log(`Feuille "${sheetName}" non trouvée, utilisation de la première feuille`);
-            if (workbook.SheetNames.length === 0) {
+          let targetSheetName = "";
+          
+          if (workbook.SheetNames.includes(sheetName)) {
+            targetSheetName = sheetName;
+            console.log(`Utilisation de la feuille spécifiée: ${targetSheetName}`);
+          } else {
+            // Chercher une correspondance partielle ou utiliser la première feuille
+            const partialMatch = workbook.SheetNames.find(name => 
+              name.toLowerCase().includes("créances") || 
+              name.toLowerCase().includes("creances") ||
+              name.toLowerCase().includes("etat")
+            );
+            
+            if (partialMatch) {
+              targetSheetName = partialMatch;
+              console.log(`Feuille correspondante trouvée: ${targetSheetName}`);
+            } else if (workbook.SheetNames.length > 0) {
+              targetSheetName = workbook.SheetNames[0];
+              console.log(`Utilisation de la première feuille disponible: ${targetSheetName}`);
+            } else {
               throw new Error("Le fichier Excel ne contient aucune feuille");
             }
           }
           
-          // Utiliser la feuille spécifiée ou la première disponible
-          const targetSheetName = workbook.SheetNames.includes(sheetName) ? 
-                                 sheetName : workbook.SheetNames[0];
           const worksheet = workbook.Sheets[targetSheetName];
+          console.log("Feuille chargée, préparation à l'extraction des données");
           
-          // Obtenir toutes les données de la feuille
-          const allData = XLSX.utils.sheet_to_json(worksheet, { header: "A", range: 10 }); // Commencer à la ligne 11 (index 10)
+          // Obtenir les données en traitant par lots pour éviter les timeouts sur les gros fichiers
+          // Commencer à la ligne 11 (index 10)
+          const allData = XLSX.utils.sheet_to_json(worksheet, { 
+            header: "A", 
+            range: 10,
+            raw: true,
+            defval: ""
+          });
+          
+          console.log(`Données extraites: ${allData.length} lignes trouvées`);
           
           if (allData.length <= 1) {
             throw new Error("Données insuffisantes dans la feuille spécifiée");
@@ -171,7 +203,14 @@ export const insuranceStore = create<InsuranceStore>()(
           
           // Obtenir les en-têtes
           const headers = allData[0] as Record<string, any>;
-          const rows = allData.slice(1) as Record<string, any>[];
+          console.log("En-têtes de colonnes:", Object.values(headers));
+          
+          // Extraire les données en lots pour réduire la charge mémoire
+          const batchSize = 500;
+          const totalRows = allData.length - 1;
+          const batches = Math.ceil(totalRows / batchSize);
+          
+          let processedData: Partial<InsuranceData>[] = [];
           
           // Mapper les colonnes selon les nouvelles spécifications
           const columnMatchers = {
@@ -206,94 +245,113 @@ export const insuranceStore = create<InsuranceStore>()(
           const missing = mustHave.filter(field => !Object.values(columnMapping).includes(field));
           
           if (missing.length > 0) {
+            console.error("Colonnes manquantes:", missing);
             throw new Error(`Colonnes manquantes: ${missing.join(", ")}`);
           }
           
-          // Traiter les données
-          const processedData: Partial<InsuranceData>[] = rows.map(row => {
-            const result: Partial<InsuranceData> = {};
+          console.log("Mappage de colonnes réussi:", columnMapping);
+          
+          // Traiter les données par lots
+          for (let i = 0; i < batches; i++) {
+            const start = i * batchSize + 1; // +1 pour sauter les en-têtes
+            const end = Math.min((i + 1) * batchSize + 1, allData.length);
             
-            for (const [excelCol, targetField] of Object.entries(columnMapping)) {
-              const value = row[excelCol];
+            const batchRows = allData.slice(start, end) as Record<string, any>[];
+            console.log(`Traitement du lot ${i+1}/${batches} (lignes ${start} à ${end-1})`);
+            
+            // Traiter chaque ligne du lot
+            const batchResults = batchRows.map(row => {
+              const result: Partial<InsuranceData> = {};
               
-              switch(targetField) {
-                case "Client Name":
-                case "Contract Number":
-                  result[targetField.replace(/\s+/g, "").charAt(0).toLowerCase() + targetField.replace(/\s+/g, "").slice(1) as keyof InsuranceData] = 
-                    String(value || "");
-                  break;
-                case "Date Emission":
-                case "Date Echeance":
-                  const fieldName = targetField === "Date Emission" ? "dateEmission" : "dateEcheance";
-                  let dateValue;
-                  if (value instanceof Date) {
-                    dateValue = value;
-                  } else if (typeof value === 'number' && value > 10000) {
-                    // Excel date serial number
-                    dateValue = new Date(Math.round((value - 25569) * 86400 * 1000));
-                  } else if (typeof value === 'string' && value) {
-                    dateValue = new Date(value);
+              for (const [excelCol, targetField] of Object.entries(columnMapping)) {
+                const value = row[excelCol];
+                
+                switch(targetField) {
+                  case "Client Name":
+                  case "Contract Number":
+                    result[targetField.replace(/\s+/g, "").charAt(0).toLowerCase() + targetField.replace(/\s+/g, "").slice(1) as keyof InsuranceData] = 
+                      String(value || "");
+                    break;
+                  case "Date Emission":
+                  case "Date Echeance":
+                    const fieldName = targetField === "Date Emission" ? "dateEmission" : "dateEcheance";
+                    let dateValue;
+                    if (value instanceof Date) {
+                      dateValue = value;
+                    } else if (typeof value === 'number' && value > 10000) {
+                      // Excel date serial number
+                      dateValue = new Date(Math.round((value - 25569) * 86400 * 1000));
+                    } else if (typeof value === 'string' && value) {
+                      dateValue = new Date(value);
+                    } else {
+                      dateValue = new Date();
+                    }
+                    
+                    result[fieldName as keyof InsuranceData] = format(dateValue, 'yyyy-MM-dd');
+                    
+                    // Calculer le temps écoulé seulement pour la date d'émission
+                    if (targetField === "Date Emission") {
+                      const daysPassed = differenceInDays(new Date(), dateValue);
+                      result.timePassed = convertDaysToMonthsDays(daysPassed);
+                    }
+                    break;
+                  case "Total Amount Due":
+                    const amount = parseFloat(String(value).replace(/[^\d.-]/g, ""));
+                    result.totalAmount = isNaN(amount) ? 0 : amount;
+                    break;
+                  case "Amount Paid":
+                    const paid = parseFloat(String(value).replace(/[^\d.-]/g, ""));
+                    result.amountPaid = isNaN(paid) ? 0 : paid;
+                    break;
+                  case "Remaining Amount":
+                    const remaining = parseFloat(String(value).replace(/[^\d.-]/g, ""));
+                    result.remainingAmount = isNaN(remaining) ? 0 : remaining;
+                    break;
+                }
+              }
+              
+              // Calculs et valeurs par défaut
+              if (result.totalAmount === undefined && result.amountPaid !== undefined && result.remainingAmount !== undefined) {
+                result.totalAmount = (result.amountPaid || 0) + (result.remainingAmount || 0);
+              }
+              
+              if (result.amountPaid === undefined && result.totalAmount !== undefined && result.remainingAmount !== undefined) {
+                result.amountPaid = (result.totalAmount || 0) - (result.remainingAmount || 0);
+              }
+              
+              if (result.remainingAmount === undefined && result.totalAmount !== undefined && result.amountPaid !== undefined) {
+                result.remainingAmount = (result.totalAmount || 0) - (result.amountPaid || 0);
+              }
+              
+              // Déterminer le statut avec les nouveaux noms
+              const statusValue: InsuranceStatus = (() => {
+                if (result.remainingAmount !== undefined && result.totalAmount !== undefined) {
+                  if (result.remainingAmount <= 0) {
+                    return 'Recouvré';
+                  } else if (result.remainingAmount < result.totalAmount) {
+                    return 'Partiellement recouvré';
                   } else {
-                    dateValue = new Date();
+                    return 'Créance';
                   }
-                  
-                  result[fieldName as keyof InsuranceData] = format(dateValue, 'yyyy-MM-dd');
-                  
-                  // Calculer le temps écoulé seulement pour la date d'émission
-                  if (targetField === "Date Emission") {
-                    const daysPassed = differenceInDays(new Date(), dateValue);
-                    result.timePassed = convertDaysToMonthsDays(daysPassed);
-                  }
-                  break;
-                case "Total Amount Due":
-                  const amount = parseFloat(String(value).replace(/[^\d.-]/g, ""));
-                  result.totalAmount = isNaN(amount) ? 0 : amount;
-                  break;
-                case "Amount Paid":
-                  const paid = parseFloat(String(value).replace(/[^\d.-]/g, ""));
-                  result.amountPaid = isNaN(paid) ? 0 : paid;
-                  break;
-                case "Remaining Amount":
-                  const remaining = parseFloat(String(value).replace(/[^\d.-]/g, ""));
-                  result.remainingAmount = isNaN(remaining) ? 0 : remaining;
-                  break;
-              }
-            }
+                }
+                return 'Créance';
+              })();
+              
+              result.status = statusValue;
+              
+              return result;
+            });
             
-            // Calculs et valeurs par défaut
-            if (result.totalAmount === undefined && result.amountPaid !== undefined && result.remainingAmount !== undefined) {
-              result.totalAmount = (result.amountPaid || 0) + (result.remainingAmount || 0);
-            }
-            
-            if (result.amountPaid === undefined && result.totalAmount !== undefined && result.remainingAmount !== undefined) {
-              result.amountPaid = (result.totalAmount || 0) - (result.remainingAmount || 0);
-            }
-            
-            if (result.remainingAmount === undefined && result.totalAmount !== undefined && result.amountPaid !== undefined) {
-              result.remainingAmount = (result.totalAmount || 0) - (result.amountPaid || 0);
-            }
-            
-            // Déterminer le statut avec les nouveaux noms
-            if (result.remainingAmount !== undefined && result.totalAmount !== undefined) {
-              if (result.remainingAmount <= 0) {
-                result.status = 'Recouvré';
-              } else if (result.remainingAmount < result.totalAmount) {
-                result.status = 'Partiellement recouvré';
-              } else {
-                result.status = 'Créance';
-              }
-            } else {
-              result.status = 'Créance';
-            }
-            
-            return result;
-          });
+            processedData = [...processedData, ...batchResults];
+          }
           
           // Filtrer les données incomplètes
           const validData = processedData.filter(
             item => item.clientName && item.contractNumber && item.dateEmission && 
                    typeof item.totalAmount === 'number' && typeof item.remainingAmount === 'number'
           ) as InsuranceData[];
+          
+          console.log(`Données valides extraites: ${validData.length} entrées`);
           
           // Mettre à jour le store - si un contrat existe déjà, mettre à jour ses valeurs
           set(state => {
@@ -324,6 +382,8 @@ export const insuranceStore = create<InsuranceStore>()(
             
             return { insuranceData: existingData };
           });
+          
+          console.log("Traitement du fichier Excel terminé avec succès");
           
         } catch (error) {
           console.error("Erreur lors du traitement du fichier:", error);
