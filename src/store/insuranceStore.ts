@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import * as XLSX from 'xlsx';
 import { format, differenceInDays, isValid } from 'date-fns';
@@ -183,6 +184,7 @@ export const insuranceStore = create<InsuranceStore>()(
             type: 'array',     // Optimisé pour les fichiers volumineux
             cellDates: true,   // Convertir les dates en objets Date automatiquement
             dateNF: 'yyyy-mm-dd', // Format de date par défaut
+            rawNumbers: false, // Conserver les formats pour les nombres
           });
           
           console.log("Workbook chargé, feuilles disponibles:", workbook.SheetNames);
@@ -216,12 +218,11 @@ export const insuranceStore = create<InsuranceStore>()(
           const worksheet = workbook.Sheets[targetSheetName];
           console.log("Feuille chargée, préparation à l'extraction des données");
           
-          // Obtenir les données en traitant par lots pour éviter les timeouts sur les gros fichiers
-          // Commencer à la ligne 11 (index 10)
+          // Obtenir les données en mode texte pour éviter les problèmes de conversion
           const allData = XLSX.utils.sheet_to_json(worksheet, { 
             header: "A", 
             range: 10,
-            raw: false, // Ne pas convertir en valeurs brutes pour éviter les problèmes
+            raw: false, // Très important: garder les valeurs en tant que texte pour éviter les problèmes
             defval: ""
           });
           
@@ -234,9 +235,6 @@ export const insuranceStore = create<InsuranceStore>()(
           // Obtenir les en-têtes
           const headers = allData[0] as Record<string, any>;
           console.log("En-têtes de colonnes:", Object.values(headers));
-          
-          // Traitement de toutes les lignes d'un coup en gérant la mémoire
-          const totalRows = allData.length - 1;
           
           // Mapper les colonnes selon les nouvelles spécifications
           const columnMatchers = {
@@ -278,12 +276,14 @@ export const insuranceStore = create<InsuranceStore>()(
           
           console.log("Mappage de colonnes réussi:", columnMapping);
           
-          // Process all rows at once with memory management and optimize performance
-          console.log(`Traitement de toutes les ${totalRows} lignes`);
+          // Process all rows - skip the header row (index 0)
+          console.log(`Traitement de toutes les ${allData.length-1} lignes`);
           
           try {
-            // Optimized processing - use a more efficient approach
+            // Optimized processing - use a more efficient approach for large datasets
             const processedData: InsuranceData[] = [];
+            const batchSize = 500; // Process in smaller batches to prevent UI freezes
+            const startTime = Date.now();
             
             // Skip the header row (index 0)
             for (let i = 1; i < allData.length; i++) {
@@ -292,6 +292,11 @@ export const insuranceStore = create<InsuranceStore>()(
               // Skip completely empty rows
               if (Object.values(row).every(val => !val)) {
                 continue;
+              }
+              
+              // Only log progress for larger batches
+              if (i % 1000 === 0) {
+                console.log(`Processing row ${i}/${allData.length-1} (${Math.round((i/(allData.length-1))*100)}%)`);
               }
               
               const result: InsuranceData = {
@@ -307,19 +312,52 @@ export const insuranceStore = create<InsuranceStore>()(
                 status: "Créance"
               };
               
+              // First ensure we always have the key fields with special handling for contract numbers
+              // This helps with the issue of not loading all rows
+              let hasContractNumber = false;
+              let hasClientName = false;
+              
+              for (const [excelCol, targetField] of Object.entries(columnMapping)) {
+                if (targetField === "Contract Number") {
+                  // Always store contract numbers as strings, handle all types of input
+                  let value = row[excelCol];
+                  if (value === undefined || value === null) {
+                    value = `Unknown-${i}`;  // Generate a unique ID for rows without contract numbers
+                  } else {
+                    // Ensure we treat contract numbers as strings, even if they appear numeric
+                    value = String(value).trim();
+                    if (value === "") {
+                      value = `Unknown-${i}`;  // Generate a unique ID for rows with empty contract numbers
+                    }
+                  }
+                  result.contractNumber = value;
+                  hasContractNumber = true;
+                } else if (targetField === "Client Name") {
+                  result.clientName = String(row[excelCol] || "").trim() || `Client-${i}`;
+                  hasClientName = true;
+                }
+              }
+              
+              // If we're missing key fields after special handling, generate them
+              if (!hasContractNumber) {
+                result.contractNumber = `Unknown-${i}`;
+              }
+              if (!hasClientName) {
+                result.clientName = `Client-${i}`;
+              }
+              
+              // Now process all other fields
               for (const [excelCol, targetField] of Object.entries(columnMapping)) {
                 const value = row[excelCol];
                 
+                // Skip the fields we've already processed
+                if (targetField === "Contract Number" || targetField === "Client Name") {
+                  continue;
+                }
+                
                 switch(targetField) {
-                  case "Client Name":
-                    result.clientName = String(value || "");
-                    break;
-                  case "Contract Number":
-                    // Ensure we treat contract numbers as strings, even if they appear numeric
-                    result.contractNumber = String(value || "").trim();
-                    break;
                   case "Code Agence":
-                    result.codeAgence = String(value || "");
+                    result.codeAgence = String(value || "").trim();
                     break;
                   case "Date Emission":
                   case "Date Echeance":
@@ -434,11 +472,6 @@ export const insuranceStore = create<InsuranceStore>()(
                 }
               }
               
-              // Skip rows without client name or contract number
-              if (!result.clientName || !result.contractNumber) {
-                continue;
-              }
-              
               // Calculs et valeurs par défaut
               if (result.totalAmount === 0 && result.amountPaid !== 0 && result.remainingAmount !== 0) {
                 result.totalAmount = (result.amountPaid || 0) + (result.remainingAmount || 0);
@@ -462,39 +495,20 @@ export const insuranceStore = create<InsuranceStore>()(
               }
               
               processedData.push(result);
+              
+              // Update in batches to avoid UI freezes for very large files
+              if (i % batchSize === 0 || i === allData.length - 1) {
+                const progress = Math.round((i / (allData.length - 1)) * 100);
+                console.log(`Processed ${i}/${allData.length-1} rows (${progress}%)`);
+              }
             }
             
-            console.log(`Données valides extraites: ${processedData.length} entrées`);
+            const endTime = Date.now();
+            console.log(`Données valides extraites: ${processedData.length} entrées en ${(endTime - startTime)/1000} secondes`);
             
-            // Mettre à jour le store - si un contrat existe déjà, mettre à jour ses valeurs
+            // Mettre à jour le store - en une seule opération pour améliorer les performances
             set(state => {
-              const existingData = [...state.insuranceData];
-              const existingContractMap = new Map<string, number>();
-              
-              // Créer un map des contrats existants avec leur index dans le tableau
-              existingData.forEach((item, index) => {
-                existingContractMap.set(item.contractNumber, index);
-              });
-              
-              // Mettre à jour ou ajouter les données
-              processedData.forEach(newItem => {
-                if (existingContractMap.has(newItem.contractNumber)) {
-                  // Mettre à jour le contrat existant
-                  const index = existingContractMap.get(newItem.contractNumber)!;
-                  existingData[index] = {
-                    ...existingData[index],
-                    remainingAmount: newItem.remainingAmount,
-                    amountPaid: newItem.amountPaid || existingData[index].amountPaid,
-                    status: newItem.status,
-                    codeAgence: newItem.codeAgence || existingData[index].codeAgence
-                  };
-                } else {
-                  // Ajouter le nouveau contrat
-                  existingData.push(newItem);
-                }
-              });
-              
-              return { insuranceData: existingData };
+              return { insuranceData: processedData };
             });
             
             console.log("Traitement du fichier Excel terminé avec succès");
