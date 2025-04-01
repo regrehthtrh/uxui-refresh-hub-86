@@ -1,7 +1,6 @@
-
 import { create } from 'zustand';
 import * as XLSX from 'xlsx';
-import { format, differenceInDays } from 'date-fns';
+import { format, differenceInDays, isValid } from 'date-fns';
 import { persist } from 'zustand/middleware';
 
 // Fonction utilitaire pour convertir les jours en format lisible (années, mois, jours)
@@ -28,6 +27,32 @@ const convertDaysToMonthsDays = (days: number): string => {
   }
   
   return parts.length > 0 ? parts.join(", ") : "";
+};
+
+// Safe date format function to prevent "Invalid time value" errors
+const safeFormatDate = (date: Date | null): string => {
+  if (!date || !isValid(date)) {
+    return "";
+  }
+  try {
+    return format(date, 'yyyy-MM-dd');
+  } catch (error) {
+    console.error("Error formatting date:", error);
+    return "";
+  }
+};
+
+// Safe difference in days function
+const safeDifferenceInDays = (dateLeft: Date, dateRight: Date): number => {
+  try {
+    if (!isValid(dateLeft) || !isValid(dateRight)) {
+      return 0;
+    }
+    return differenceInDays(dateLeft, dateRight);
+  } catch (error) {
+    console.error("Error calculating days difference:", error);
+    return 0;
+  }
 };
 
 // Fonction pour normaliser les noms de colonnes
@@ -210,7 +235,7 @@ export const insuranceStore = create<InsuranceStore>()(
           const totalRows = allData.length - 1;
           const batches = Math.ceil(totalRows / batchSize);
           
-          let processedData: Partial<InsuranceData>[] = [];
+          let processedData: InsuranceData[] = [];
           
           // Mapper les colonnes selon les nouvelles spécifications
           const columnMatchers = {
@@ -259,97 +284,143 @@ export const insuranceStore = create<InsuranceStore>()(
             const batchRows = allData.slice(start, end) as Record<string, any>[];
             console.log(`Traitement du lot ${i+1}/${batches} (lignes ${start} à ${end-1})`);
             
-            // Traiter chaque ligne du lot
-            const batchResults = batchRows.map(row => {
-              const result: Partial<InsuranceData> = {};
-              
-              for (const [excelCol, targetField] of Object.entries(columnMapping)) {
-                const value = row[excelCol];
+            try {
+              // Traiter chaque ligne du lot
+              const batchResults = batchRows.map(row => {
+                const result: Partial<InsuranceData> = {
+                  clientName: "",
+                  contractNumber: "",
+                  dateEmission: "",
+                  dateEcheance: "",
+                  totalAmount: 0,
+                  amountPaid: 0,
+                  remainingAmount: 0,
+                  timePassed: "",
+                  status: "Créance"
+                };
                 
-                switch(targetField) {
-                  case "Client Name":
-                  case "Contract Number":
-                    result[targetField.replace(/\s+/g, "").charAt(0).toLowerCase() + targetField.replace(/\s+/g, "").slice(1) as keyof InsuranceData] = 
-                      String(value || "");
-                    break;
-                  case "Date Emission":
-                  case "Date Echeance":
-                    const fieldName = targetField === "Date Emission" ? "dateEmission" : "dateEcheance";
-                    let dateValue;
-                    if (value instanceof Date) {
-                      dateValue = value;
-                    } else if (typeof value === 'number' && value > 10000) {
-                      // Excel date serial number
-                      dateValue = new Date(Math.round((value - 25569) * 86400 * 1000));
-                    } else if (typeof value === 'string' && value) {
-                      dateValue = new Date(value);
-                    } else {
-                      dateValue = new Date();
-                    }
-                    
-                    result[fieldName as keyof InsuranceData] = format(dateValue, 'yyyy-MM-dd');
-                    
-                    // Calculer le temps écoulé seulement pour la date d'émission
-                    if (targetField === "Date Emission") {
-                      const daysPassed = differenceInDays(new Date(), dateValue);
-                      result.timePassed = convertDaysToMonthsDays(daysPassed);
-                    }
-                    break;
-                  case "Total Amount Due":
-                    const amount = parseFloat(String(value).replace(/[^\d.-]/g, ""));
-                    result.totalAmount = isNaN(amount) ? 0 : amount;
-                    break;
-                  case "Amount Paid":
-                    const paid = parseFloat(String(value).replace(/[^\d.-]/g, ""));
-                    result.amountPaid = isNaN(paid) ? 0 : paid;
-                    break;
-                  case "Remaining Amount":
-                    const remaining = parseFloat(String(value).replace(/[^\d.-]/g, ""));
-                    result.remainingAmount = isNaN(remaining) ? 0 : remaining;
-                    break;
-                }
-              }
-              
-              // Calculs et valeurs par défaut
-              if (result.totalAmount === undefined && result.amountPaid !== undefined && result.remainingAmount !== undefined) {
-                result.totalAmount = (result.amountPaid || 0) + (result.remainingAmount || 0);
-              }
-              
-              if (result.amountPaid === undefined && result.totalAmount !== undefined && result.remainingAmount !== undefined) {
-                result.amountPaid = (result.totalAmount || 0) - (result.remainingAmount || 0);
-              }
-              
-              if (result.remainingAmount === undefined && result.totalAmount !== undefined && result.amountPaid !== undefined) {
-                result.remainingAmount = (result.totalAmount || 0) - (result.amountPaid || 0);
-              }
-              
-              // Déterminer le statut avec les nouveaux noms
-              const statusValue: InsuranceStatus = (() => {
-                if (result.remainingAmount !== undefined && result.totalAmount !== undefined) {
-                  if (result.remainingAmount <= 0) {
-                    return 'Recouvré';
-                  } else if (result.remainingAmount < result.totalAmount) {
-                    return 'Partiellement recouvré';
-                  } else {
-                    return 'Créance';
+                for (const [excelCol, targetField] of Object.entries(columnMapping)) {
+                  const value = row[excelCol];
+                  
+                  switch(targetField) {
+                    case "Client Name":
+                      result.clientName = String(value || "");
+                      break;
+                    case "Contract Number":
+                      result.contractNumber = String(value || "");
+                      break;
+                    case "Date Emission":
+                    case "Date Echeance":
+                      const fieldName = targetField === "Date Emission" ? "dateEmission" : "dateEcheance";
+                      let dateValue: Date | null = null;
+                      
+                      try {
+                        if (value instanceof Date) {
+                          dateValue = value;
+                        } else if (typeof value === 'number' && value > 10000) {
+                          // Excel date serial number
+                          dateValue = new Date(Math.round((value - 25569) * 86400 * 1000));
+                        } else if (typeof value === 'string' && value) {
+                          // Try to parse the string as a date
+                          const parsedDate = new Date(value);
+                          if (isValid(parsedDate)) {
+                            dateValue = parsedDate;
+                          }
+                        }
+                        
+                        // If we have a valid date value, format it and calculate time passed
+                        if (dateValue && isValid(dateValue)) {
+                          result[fieldName as keyof InsuranceData] = safeFormatDate(dateValue);
+                          
+                          // Calculer le temps écoulé seulement pour la date d'émission
+                          if (targetField === "Date Emission" && dateValue) {
+                            const daysPassed = safeDifferenceInDays(new Date(), dateValue);
+                            result.timePassed = convertDaysToMonthsDays(daysPassed);
+                          }
+                        } else {
+                          result[fieldName as keyof InsuranceData] = "";
+                        }
+                      } catch (error) {
+                        console.error(`Error processing date for ${fieldName}:`, error);
+                        result[fieldName as keyof InsuranceData] = "";
+                      }
+                      break;
+                    case "Total Amount Due":
+                      try {
+                        const amount = typeof value === 'number' 
+                          ? value 
+                          : parseFloat(String(value).replace(/[^\d.-]/g, ""));
+                        result.totalAmount = isNaN(amount) ? 0 : amount;
+                      } catch (error) {
+                        console.error("Error parsing total amount:", error);
+                        result.totalAmount = 0;
+                      }
+                      break;
+                    case "Amount Paid":
+                      try {
+                        const paid = typeof value === 'number'
+                          ? value
+                          : parseFloat(String(value).replace(/[^\d.-]/g, ""));
+                        result.amountPaid = isNaN(paid) ? 0 : paid;
+                      } catch (error) {
+                        console.error("Error parsing paid amount:", error);
+                        result.amountPaid = 0;
+                      }
+                      break;
+                    case "Remaining Amount":
+                      try {
+                        const remaining = typeof value === 'number'
+                          ? value
+                          : parseFloat(String(value).replace(/[^\d.-]/g, ""));
+                        result.remainingAmount = isNaN(remaining) ? 0 : remaining;
+                      } catch (error) {
+                        console.error("Error parsing remaining amount:", error);
+                        result.remainingAmount = 0;
+                      }
+                      break;
                   }
                 }
-                return 'Créance';
-              })();
+                
+                // Calculs et valeurs par défaut
+                if (result.totalAmount === 0 && result.amountPaid !== 0 && result.remainingAmount !== 0) {
+                  result.totalAmount = (result.amountPaid || 0) + (result.remainingAmount || 0);
+                }
+                
+                if (result.amountPaid === 0 && result.totalAmount !== 0 && result.remainingAmount !== 0) {
+                  result.amountPaid = (result.totalAmount || 0) - (result.remainingAmount || 0);
+                }
+                
+                if (result.remainingAmount === 0 && result.totalAmount !== 0 && result.amountPaid !== 0) {
+                  result.remainingAmount = (result.totalAmount || 0) - (result.amountPaid || 0);
+                }
+                
+                // Déterminer le statut avec les nouveaux noms
+                let statusValue: InsuranceStatus = "Créance";
+                
+                if (result.remainingAmount <= 0) {
+                  statusValue = 'Recouvré';
+                } else if (result.remainingAmount < result.totalAmount) {
+                  statusValue = 'Partiellement recouvré';
+                } else {
+                  statusValue = 'Créance';
+                }
+                
+                result.status = statusValue;
+                
+                return result as InsuranceData;
+              });
               
-              result.status = statusValue;
-              
-              return result;
-            });
-            
-            processedData = [...processedData, ...batchResults];
+              processedData = [...processedData, ...batchResults];
+            } catch (error) {
+              console.error(`Erreur lors du traitement du lot ${i+1}:`, error);
+              // Continue with other batches
+            }
           }
           
           // Filtrer les données incomplètes
           const validData = processedData.filter(
-            item => item.clientName && item.contractNumber && item.dateEmission && 
-                   typeof item.totalAmount === 'number' && typeof item.remainingAmount === 'number'
-          ) as InsuranceData[];
+            item => item.clientName && item.contractNumber
+          );
           
           console.log(`Données valides extraites: ${validData.length} entrées`);
           
