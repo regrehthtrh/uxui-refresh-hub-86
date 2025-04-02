@@ -151,6 +151,7 @@ const cleanContractNumber = (value: any): string => {
     return contractNumber;
   }
   
+  // Return the cleaned contract number
   return contractNumber;
 };
 
@@ -343,7 +344,6 @@ export const insuranceStore = create<InsuranceStore>()(
               };
               
               // First ensure we always have the key fields with special handling for contract numbers
-              // This helps with the issue of not loading all rows
               let hasContractNumber = false;
               let hasClientName = false;
               
@@ -353,7 +353,8 @@ export const insuranceStore = create<InsuranceStore>()(
                   const rawValue = row[excelCol];
                   const cleanedValue = cleanContractNumber(rawValue);
                   
-                  if (cleanedValue) {
+                  // Only set "Pas de N°" if really no contract number was found
+                  if (cleanedValue && cleanedValue.length > 0) {
                     result.contractNumber = cleanedValue;
                     hasContractNumber = true;
                   } else {

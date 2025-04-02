@@ -146,15 +146,21 @@ const InsuranceDataTable = () => {
   };
 
   const formatContractNumber = (contractNumber: string) => {
-    if (!contractNumber || contractNumber.startsWith('Pas de N°')) {
+    console.log("Contract number:", contractNumber);
+    
+    if (!contractNumber) {
       return <span className="text-muted-foreground italic">Non disponible</span>;
     }
     
-    if (contractNumber.includes('/')) {
+    if (typeof contractNumber === 'string' && contractNumber.startsWith('Pas de N°')) {
+      return <span className="text-muted-foreground italic">Non disponible</span>;
+    }
+    
+    if (typeof contractNumber === 'string' && contractNumber.includes('/')) {
       return <span className="font-mono">{contractNumber}</span>;
     }
     
-    return contractNumber;
+    return <span>{contractNumber}</span>;
   };
 
   const filteredData = insuranceData.filter(item => {
