@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from "react";
 import { 
   Table, TableBody, TableCell, TableHead, 
@@ -23,6 +22,7 @@ import {
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
+  PaginationEllipsis
 } from "@/components/ui/pagination";
 
 const ROWS_PER_PAGE = 100;
@@ -35,7 +35,6 @@ const InsuranceDataTable = () => {
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   
   const { 
@@ -83,7 +82,6 @@ const InsuranceDataTable = () => {
         description: `Le fichier a été chargé avec succès. ${insuranceData.length} enregistrements trouvés.`,
       });
       
-      // Reset to first page when new data is loaded
       setCurrentPage(1);
     } catch (error: any) {
       console.error("Erreur lors du traitement du fichier:", error);
@@ -179,40 +177,31 @@ const InsuranceDataTable = () => {
       : dateB - dateA;
   });
   
-  // Pagination logic
   const totalPages = Math.ceil(sortedData.length / ROWS_PER_PAGE);
   
-  // Get current page data
   const startIndex = (currentPage - 1) * ROWS_PER_PAGE;
   const paginatedData = sortedData.slice(startIndex, startIndex + ROWS_PER_PAGE);
   
-  // Generate page numbers for pagination display
   const getPageNumbers = () => {
     const pageNumbers = [];
     
-    // Always show first page
     pageNumbers.push(1);
     
-    // Logic for middle pages
     const rangeStart = Math.max(2, currentPage - 2);
     const rangeEnd = Math.min(totalPages - 1, currentPage + 2);
     
-    // Add ellipsis after first page if needed
     if (rangeStart > 2) {
       pageNumbers.push('ellipsis1');
     }
     
-    // Add middle pages
     for (let i = rangeStart; i <= rangeEnd; i++) {
       pageNumbers.push(i);
     }
     
-    // Add ellipsis before last page if needed
     if (rangeEnd < totalPages - 1 && totalPages > 1) {
       pageNumbers.push('ellipsis2');
     }
     
-    // Add last page if it's not already included and we have more than one page
     if (totalPages > 1 && !pageNumbers.includes(totalPages)) {
       pageNumbers.push(totalPages);
     }
@@ -223,7 +212,6 @@ const InsuranceDataTable = () => {
   const handlePageChange = (page: number) => {
     if (page < 1 || page > totalPages) return;
     setCurrentPage(page);
-    // Scroll to top of table when changing page
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -387,7 +375,6 @@ const InsuranceDataTable = () => {
             </Table>
           </div>
           
-          {/* Pagination UI */}
           {totalPages > 1 && !isLoading && (
             <div className="mt-4 flex justify-center">
               <Pagination>
