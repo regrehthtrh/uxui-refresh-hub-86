@@ -145,6 +145,18 @@ const InsuranceDataTable = () => {
     }
   };
 
+  const formatContractNumber = (contractNumber: string) => {
+    if (!contractNumber || contractNumber.startsWith('Pas de N°')) {
+      return <span className="text-muted-foreground italic">Non disponible</span>;
+    }
+    
+    if (contractNumber.includes('/')) {
+      return <span className="font-mono">{contractNumber}</span>;
+    }
+    
+    return contractNumber;
+  };
+
   const filteredData = insuranceData.filter(item => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -333,7 +345,7 @@ const InsuranceDataTable = () => {
                       </TableCell>
                       <TableCell>
                         <div className="font-medium whitespace-nowrap overflow-visible">
-                          {row.contractNumber}
+                          {formatContractNumber(row.contractNumber)}
                         </div>
                       </TableCell>
                       <TableCell className="max-w-48">

@@ -122,6 +122,38 @@ const findBestColumnMatch = (columns: string[], possibleMatches: string[]): stri
   return null;
 };
 
+// Improved function to properly handle contract number formatting
+const cleanContractNumber = (value: any): string => {
+  // Handle null or undefined
+  if (value === null || value === undefined) {
+    return "";
+  }
+  
+  // Convert to string and trim
+  let contractNumber = String(value).trim();
+  
+  // Check for common Excel errors
+  if (contractNumber === "" || 
+      contractNumber === "#N/A" || 
+      contractNumber === "#REF!" || 
+      contractNumber === "#VALUE!" ||
+      contractNumber === "#DIV/0!" ||
+      contractNumber === "#NAME?" ||
+      contractNumber === "#NULL!" ||
+      contractNumber === "#NUM!" ||
+      /^#+$/.test(contractNumber)) {
+    return "";
+  }
+  
+  // Special handling for contract number format P/A16004/4/24/000284
+  // Ensure all parts of the format are preserved
+  if (/^P\/[A-Z0-9]+\/\d+\/\d+\/\d+$/.test(contractNumber)) {
+    return contractNumber;
+  }
+  
+  return contractNumber;
+};
+
 // Définir les types corrects
 export type InsuranceStatus = 'Recouvré' | 'Partiellement recouvré' | 'Créance';
 
@@ -317,21 +349,16 @@ export const insuranceStore = create<InsuranceStore>()(
               
               for (const [excelCol, targetField] of Object.entries(columnMapping)) {
                 if (targetField === "Contract Number") {
-                  // Improved handling for contract numbers
-                  let value = row[excelCol];
-                  if (value === undefined || value === null) {
-                    value = `Pas de N° ${i}`;  // Better label for missing contract numbers
+                  // IMPROVED: Better handling for contract numbers using our new function
+                  const rawValue = row[excelCol];
+                  const cleanedValue = cleanContractNumber(rawValue);
+                  
+                  if (cleanedValue) {
+                    result.contractNumber = cleanedValue;
+                    hasContractNumber = true;
                   } else {
-                    // Ensure we treat contract numbers as strings, handle special formats like P/A16004/4/24/000284
-                    value = String(value).trim();
-                    
-                    // If value is empty or just contains special characters that might render as ###
-                    if (value === "" || /^[#]+$/.test(value)) {
-                      value = `Pas de N° ${i}`;
-                    }
+                    result.contractNumber = `Pas de N° ${i}`;
                   }
-                  result.contractNumber = value;
-                  hasContractNumber = true;
                 } else if (targetField === "Client Name") {
                   result.clientName = String(row[excelCol] || "").trim() || `Client-${i}`;
                   hasClientName = true;
