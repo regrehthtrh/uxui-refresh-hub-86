@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from "react";
 import { 
   Table, TableBody, TableCell, TableHead, 
@@ -15,6 +16,16 @@ import { insuranceStore } from "@/store/insuranceStore";
 import { useToast } from "@/hooks/use-toast";
 import { Copy, FileUp, RefreshCw, MoreHorizontal, X, Loader2 } from "lucide-react";
 import ConfirmResetDialog from "./ConfirmResetDialog";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+
+const ROWS_PER_PAGE = 100;
 
 const InsuranceDataTable = () => {
   const { toast } = useToast();
@@ -23,6 +34,9 @@ const InsuranceDataTable = () => {
   const [dateSort, setDateSort] = useState("ascending");
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
   
   const { 
     insuranceData,
@@ -68,6 +82,9 @@ const InsuranceDataTable = () => {
         title: "Chargement réussi",
         description: `Le fichier a été chargé avec succès. ${insuranceData.length} enregistrements trouvés.`,
       });
+      
+      // Reset to first page when new data is loaded
+      setCurrentPage(1);
     } catch (error: any) {
       console.error("Erreur lors du traitement du fichier:", error);
       
@@ -84,6 +101,7 @@ const InsuranceDataTable = () => {
   
   const handleResetData = () => {
     resetData();
+    setCurrentPage(1);
     toast({
       title: "Réinitialisation",
       description: "Toutes les données ont été réinitialisées avec succès.",
@@ -94,6 +112,7 @@ const InsuranceDataTable = () => {
     setSearchQuery("");
     setStatusFilter("all");
     setDateSort("ascending");
+    setCurrentPage(1);
     
     toast({
       title: "Filtres réinitialisés",
@@ -159,6 +178,54 @@ const InsuranceDataTable = () => {
       ? dateA - dateB
       : dateB - dateA;
   });
+  
+  // Pagination logic
+  const totalPages = Math.ceil(sortedData.length / ROWS_PER_PAGE);
+  
+  // Get current page data
+  const startIndex = (currentPage - 1) * ROWS_PER_PAGE;
+  const paginatedData = sortedData.slice(startIndex, startIndex + ROWS_PER_PAGE);
+  
+  // Generate page numbers for pagination display
+  const getPageNumbers = () => {
+    const pageNumbers = [];
+    
+    // Always show first page
+    pageNumbers.push(1);
+    
+    // Logic for middle pages
+    const rangeStart = Math.max(2, currentPage - 2);
+    const rangeEnd = Math.min(totalPages - 1, currentPage + 2);
+    
+    // Add ellipsis after first page if needed
+    if (rangeStart > 2) {
+      pageNumbers.push('ellipsis1');
+    }
+    
+    // Add middle pages
+    for (let i = rangeStart; i <= rangeEnd; i++) {
+      pageNumbers.push(i);
+    }
+    
+    // Add ellipsis before last page if needed
+    if (rangeEnd < totalPages - 1 && totalPages > 1) {
+      pageNumbers.push('ellipsis2');
+    }
+    
+    // Add last page if it's not already included and we have more than one page
+    if (totalPages > 1 && !pageNumbers.includes(totalPages)) {
+      pageNumbers.push(totalPages);
+    }
+    
+    return pageNumbers;
+  };
+  
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page > totalPages) return;
+    setCurrentPage(page);
+    // Scroll to top of table when changing page
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const paidCount = filteredData.filter(item => item.status === "Recouvré").length;
   const partialCount = filteredData.filter(item => item.status === "Partiellement recouvré").length;
@@ -271,10 +338,10 @@ const InsuranceDataTable = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  sortedData.map((row, index) => (
+                  paginatedData.map((row, index) => (
                     <TableRow key={index}>
                       <TableCell className="text-center font-medium text-muted-foreground">
-                        {index + 1}
+                        {startIndex + index + 1}
                       </TableCell>
                       <TableCell>
                         <div className="font-medium whitespace-nowrap overflow-visible">
@@ -319,6 +386,46 @@ const InsuranceDataTable = () => {
               </TableBody>
             </Table>
           </div>
+          
+          {/* Pagination UI */}
+          {totalPages > 1 && !isLoading && (
+            <div className="mt-4 flex justify-center">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious 
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                      aria-disabled={currentPage === 1}
+                    />
+                  </PaginationItem>
+                  
+                  {getPageNumbers().map((pageNumber, i) => (
+                    <PaginationItem key={i}>
+                      {pageNumber === 'ellipsis1' || pageNumber === 'ellipsis2' ? (
+                        <PaginationEllipsis />
+                      ) : (
+                        <PaginationLink
+                          isActive={currentPage === pageNumber}
+                          onClick={() => typeof pageNumber === 'number' && handlePageChange(pageNumber)}
+                        >
+                          {pageNumber}
+                        </PaginationLink>
+                      )}
+                    </PaginationItem>
+                  ))}
+                  
+                  <PaginationItem>
+                    <PaginationNext 
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      className={currentPage === totalPages || totalPages === 0 ? "pointer-events-none opacity-50" : ""}
+                      aria-disabled={currentPage === totalPages || totalPages === 0}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
         </CardContent>
       </Card>
       
@@ -332,6 +439,11 @@ const InsuranceDataTable = () => {
               <span className="text-red-600 mx-1">🔴 {unpaidCount} Créance</span>
               (Total : {totalCount})
             </p>
+            {totalPages > 1 && (
+              <p className="text-sm text-muted-foreground mt-1">
+                Affichage de {Math.min(ROWS_PER_PAGE, sortedData.length - startIndex)} lignes sur {totalCount} ({currentPage} sur {totalPages} pages)
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
