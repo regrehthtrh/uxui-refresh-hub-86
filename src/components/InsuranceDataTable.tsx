@@ -1,4 +1,5 @@
-import React, { useState, useRef } from "react";
+
+import React, { useState, useRef, useMemo } from "react";
 import { 
   Table, TableBody, TableCell, TableHead, 
   TableHeader, TableRow 
@@ -31,6 +32,7 @@ const InsuranceDataTable = () => {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [codeAgenceFilter, setCodeAgenceFilter] = useState("all");
   const [dateSort, setDateSort] = useState("ascending");
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -42,6 +44,17 @@ const InsuranceDataTable = () => {
     loadFile,
     resetData,
   } = insuranceStore();
+  
+  // Get unique agencies for the filter dropdown
+  const uniqueAgencies = useMemo(() => {
+    const agencies = new Set<string>();
+    insuranceData.forEach(item => {
+      if (item.codeAgence) {
+        agencies.add(item.codeAgence);
+      }
+    });
+    return Array.from(agencies).sort();
+  }, [insuranceData]);
   
   const handleLoadFile = () => {
     if (fileInputRef.current) {
@@ -109,6 +122,7 @@ const InsuranceDataTable = () => {
   const handleResetFilters = () => {
     setSearchQuery("");
     setStatusFilter("all");
+    setCodeAgenceFilter("all");
     setDateSort("ascending");
     setCurrentPage(1);
     
@@ -146,8 +160,6 @@ const InsuranceDataTable = () => {
   };
 
   const formatContractNumber = (contractNumber: string) => {
-    console.log("Contract number:", contractNumber);
-    
     if (!contractNumber) {
       return <span className="text-muted-foreground italic">Non disponible</span>;
     }
@@ -164,16 +176,17 @@ const InsuranceDataTable = () => {
   };
 
   const filteredData = insuranceData.filter(item => {
+    // Text search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       
       const matchesClientName = item.clientName?.toLowerCase().includes(query);
       const matchesContractNumber = item.contractNumber?.toLowerCase().includes(query);
-      const matchesCodeAgence = item.codeAgence?.toLowerCase().includes(query);
       
-      if (!matchesClientName && !matchesContractNumber && !matchesCodeAgence) return false;
+      if (!matchesClientName && !matchesContractNumber) return false;
     }
     
+    // Status filter
     if (statusFilter !== "all") {
       const statusMapping: Record<string, string> = {
         "paid": "Recouvré",
@@ -181,6 +194,11 @@ const InsuranceDataTable = () => {
         "unpaid": "Créance"
       };
       if (item.status !== statusMapping[statusFilter]) return false;
+    }
+    
+    // Code agence filter
+    if (codeAgenceFilter !== "all") {
+      if (item.codeAgence !== codeAgenceFilter) return false;
     }
     
     return true;
@@ -273,7 +291,7 @@ const InsuranceDataTable = () => {
       
       <div className="flex flex-wrap gap-4 items-center">
         <Input
-          placeholder="Rechercher par client, police ou code agence..."
+          placeholder="Rechercher par client ou police..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="max-w-xs"
@@ -298,6 +316,19 @@ const InsuranceDataTable = () => {
           <SelectContent>
             <SelectItem value="ascending">Date d'effet: Croissant</SelectItem>
             <SelectItem value="descending">Date d'effet: Décroissant</SelectItem>
+          </SelectContent>
+        </Select>
+        
+        {/* Standalone Code Agence filter */}
+        <Select value={codeAgenceFilter} onValueChange={setCodeAgenceFilter}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="Agence: Toutes" />
+          </SelectTrigger>
+          <SelectContent className="max-h-[300px]">
+            <SelectItem value="all">Agence: Toutes</SelectItem>
+            {uniqueAgencies.map((agency, index) => (
+              <SelectItem key={index} value={agency}>{agency}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
         
