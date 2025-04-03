@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from "react";
 import { 
   Table, TableBody, TableCell, TableHead, 
@@ -13,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { insuranceStore } from "@/store/insuranceStore";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, FileUp, RefreshCw, MoreHorizontal, X, Loader2 } from "lucide-react";
+import { Copy, FileUp, RefreshCw, MoreHorizontal, X, Loader2, Search } from "lucide-react";
 import ConfirmResetDialog from "./ConfirmResetDialog";
 import {
   Pagination,
@@ -30,6 +31,7 @@ const ROWS_PER_PAGE = 100;
 const InsuranceDataTable = () => {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+  const [codeAgenceFilter, setCodeAgenceFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateSort, setDateSort] = useState("ascending");
   const [isLoading, setIsLoading] = useState(false);
@@ -108,6 +110,7 @@ const InsuranceDataTable = () => {
   
   const handleResetFilters = () => {
     setSearchQuery("");
+    setCodeAgenceFilter("");
     setStatusFilter("all");
     setDateSort("ascending");
     setCurrentPage(1);
@@ -145,35 +148,48 @@ const InsuranceDataTable = () => {
     }
   };
 
-  const formatContractNumber = (contractNumber: string) => {
-    console.log("Contract number:", contractNumber);
-    
-    if (!contractNumber) {
+  const formatContractNumber = (contractNumber: string | number) => {
+    // Handle null, undefined or empty strings
+    if (contractNumber === null || contractNumber === undefined || contractNumber === '') {
       return <span className="text-muted-foreground italic">Non disponible</span>;
     }
     
-    if (typeof contractNumber === 'string' && contractNumber.startsWith('Pas de N°')) {
+    // Convert to string to handle both string and number types
+    const contractStr = String(contractNumber);
+    
+    // Handle "Pas de N°" cases
+    if (contractStr.startsWith('Pas de N°') || contractStr === 'Non disponible') {
       return <span className="text-muted-foreground italic">Non disponible</span>;
     }
     
-    if (typeof contractNumber === 'string' && contractNumber.includes('/')) {
-      return <span className="font-mono">{contractNumber}</span>;
+    // Handle formatted contract numbers (with slash)
+    if (contractStr.includes('/')) {
+      return <span className="font-mono">{contractStr}</span>;
     }
     
-    return <span>{contractNumber}</span>;
+    // Return all other formats as-is
+    return <span>{contractStr}</span>;
   };
 
   const filteredData = insuranceData.filter(item => {
+    // Main search query filter (client name and contract number only)
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      
       const matchesClientName = item.clientName?.toLowerCase().includes(query);
-      const matchesContractNumber = item.contractNumber?.toLowerCase().includes(query);
-      const matchesCodeAgence = item.codeAgence?.toLowerCase().includes(query);
+      const matchesContractNumber = String(item.contractNumber)?.toLowerCase().includes(query);
       
-      if (!matchesClientName && !matchesContractNumber && !matchesCodeAgence) return false;
+      if (!matchesClientName && !matchesContractNumber) return false;
     }
     
+    // Separate code agence filter
+    if (codeAgenceFilter) {
+      const agenceQuery = codeAgenceFilter.toLowerCase();
+      if (!String(item.codeAgence)?.toLowerCase().includes(agenceQuery)) {
+        return false;
+      }
+    }
+    
+    // Status filter
     if (statusFilter !== "all") {
       const statusMapping: Record<string, string> = {
         "paid": "Recouvré",
@@ -272,12 +288,27 @@ const InsuranceDataTable = () => {
       </div>
       
       <div className="flex flex-wrap gap-4 items-center">
-        <Input
-          placeholder="Rechercher par client, police ou code agence..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="max-w-xs"
-        />
+        {/* Main search - for client name and contract number only */}
+        <div className="flex items-center relative">
+          <Input
+            placeholder="Rechercher par client ou numéro police..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="max-w-xs pl-8"
+          />
+          <Search className="h-4 w-4 absolute left-2 text-muted-foreground" />
+        </div>
+        
+        {/* Dedicated Code Agence filter */}
+        <div className="flex items-center relative">
+          <Input
+            placeholder="Filtrer par code agence..."
+            value={codeAgenceFilter}
+            onChange={(e) => setCodeAgenceFilter(e.target.value)}
+            className="max-w-xs pl-8"
+          />
+          <Search className="h-4 w-4 absolute left-2 text-muted-foreground" />
+        </div>
         
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-44">
