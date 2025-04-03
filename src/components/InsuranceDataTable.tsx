@@ -109,7 +109,7 @@ const InsuranceDataTable = () => {
   
   const handleResetFilters = () => {
     setSearchQuery("");
-    setCodeAgenceFilter("");
+    setCodeAgenceFilter("none");
     setStatusFilter("all");
     setDateSort("ascending");
     setCurrentPage(1);
@@ -290,8 +290,9 @@ const InsuranceDataTable = () => {
             <SelectValue placeholder="Code Agence: Tous" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Code Agence: Tous</SelectItem>
+            <SelectItem value="none">Code Agence: Tous</SelectItem>
             {Array.from(new Set(insuranceData.map(item => item.codeAgence)))
+              .filter(agency => agency)
               .sort()
               .map(agency => (
                 <SelectItem key={agency} value={agency}>
