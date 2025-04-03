@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from "react";
 import { 
   Table, TableBody, TableCell, TableHead, 
@@ -30,7 +31,7 @@ const ROWS_PER_PAGE = 100;
 const InsuranceDataTable = () => {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
-  const [codeAgenceFilter, setCodeAgenceFilter] = useState("");
+  const [codeAgenceFilter, setCodeAgenceFilter] = useState("none");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateSort, setDateSort] = useState("ascending");
   const [isLoading, setIsLoading] = useState(false);
@@ -170,9 +171,8 @@ const InsuranceDataTable = () => {
       if (!matchesClientName && !matchesContractNumber) return false;
     }
     
-    if (codeAgenceFilter) {
-      const agenceQuery = codeAgenceFilter.toLowerCase();
-      if (!String(item.codeAgence)?.toLowerCase().includes(agenceQuery)) {
+    if (codeAgenceFilter && codeAgenceFilter !== "none") {
+      if (!String(item.codeAgence)?.toLowerCase().includes(codeAgenceFilter.toLowerCase())) {
         return false;
       }
     }
