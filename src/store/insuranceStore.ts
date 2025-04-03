@@ -1,11 +1,10 @@
-
 import { create } from "zustand";
 import * as XLSX from "xlsx";
 import { differenceInDays, parse, format, isValid } from "date-fns";
 import { fr } from 'date-fns/locale';
 
 // Define the structure of our insurance data
-interface InsuranceRecord {
+export interface InsuranceRecord {
   contractNumber: string;
   clientName: string;
   codeAgence: string;
@@ -142,12 +141,19 @@ const cleanContractNumber = (contractNumber: any): string => {
     return String(contractNumber);
   }
   
+  // For any other type, try converting to string
+  try {
+    return String(contractNumber);
+  } catch (e) {
+    console.error("Failed to convert contract number to string:", contractNumber);
+  }
+  
   // Return the cleaned contract number
   return "Pas de N°";
 };
 
 // Define the store
-interface InsuranceStore {
+export interface InsuranceStore {
   insuranceData: InsuranceRecord[];
   isLoading: boolean;
   loadFile: (file: File) => Promise<void>;
@@ -270,23 +276,41 @@ export const insuranceStore = create<InsuranceStore>((set) => ({
             status: "Créance"
           };
           
-          // First ensure we always have the key fields with special handling for contract numbers
-          let hasContractNumber = false;
-          let hasClientName = false;
+          // Process each field, with a broader approach to finding contract numbers
           
-          // Handle contract number (special processing to ensure we capture it)
+          // Try to find contract number in any field if specific mapping doesn't work
+          let foundContractNumber = false;
+          
+          // First check the mapped columns
           for (const excelCol of columnMapping.contractNumber) {
             if (excelCol in row) {
               const rawValue = row[excelCol];
-              const cleanedValue = cleanContractNumber(rawValue);
-              
-              result.contractNumber = cleanedValue;
-              hasContractNumber = true;
-              break;
+              if (rawValue !== null && rawValue !== undefined && rawValue !== '') {
+                result.contractNumber = cleanContractNumber(rawValue);
+                foundContractNumber = true;
+                break;
+              }
+            }
+          }
+          
+          // If no contract number found yet, try to find it in any field containing relevant text
+          if (!foundContractNumber) {
+            for (const key in row) {
+              const value = row[key];
+              const keyLower = key.toLowerCase();
+              if (
+                (keyLower.includes('police') || keyLower.includes('contrat') || keyLower.includes('numero')) &&
+                value !== null && value !== undefined && value !== ''
+              ) {
+                result.contractNumber = cleanContractNumber(value);
+                foundContractNumber = true;
+                break;
+              }
             }
           }
           
           // Handle client name
+          let hasClientName = false;
           for (const excelCol of columnMapping.clientName) {
             if (excelCol in row && row[excelCol]) {
               result.clientName = String(row[excelCol]).trim();
@@ -295,16 +319,38 @@ export const insuranceStore = create<InsuranceStore>((set) => ({
             }
           }
           
-          // Skip rows without critical data
-          if (!hasContractNumber && !hasClientName) {
+          // Try harder to find client name if not found yet
+          if (!hasClientName) {
+            for (const key in row) {
+              const keyLower = key.toLowerCase();
+              if ((keyLower.includes('client') || keyLower.includes('assuré') || keyLower.includes('nom')) && row[key] && typeof row[key] === 'string') {
+                result.clientName = row[key].trim();
+                hasClientName = true;
+                break;
+              }
+            }
+          }
+          
+          // Only skip if both are missing
+          if (!foundContractNumber && !hasClientName) {
             console.warn("Skipping row without contract number and client name", row);
             return;
           }
           
-          // Extract other fields
-          // Code Agence
-          const codeAgence = extractValue(row, columnMapping.codeAgence, "Non renseigné");
+          // Extract code agence with broader search
+          const codeAgence = extractValue(row, columnMapping.codeAgence, "");
           result.codeAgence = codeAgence ? String(codeAgence) : "Non renseigné";
+          
+          if (!result.codeAgence || result.codeAgence === "Non renseigné") {
+            // Try to find code agence in any field
+            for (const key in row) {
+              const keyLower = key.toLowerCase();
+              if ((keyLower.includes('agence') || keyLower.includes('agency') || keyLower.includes('ag')) && row[key] && row[key] !== '') {
+                result.codeAgence = String(row[key]);
+                break;
+              }
+            }
+          }
           
           // Parse dates
           const emissionDateRaw = extractValue(row, columnMapping.dateEmission);

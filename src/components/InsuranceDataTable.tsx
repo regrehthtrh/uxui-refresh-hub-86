@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from "react";
 import { 
   Table, TableBody, TableCell, TableHead, 
@@ -149,30 +148,20 @@ const InsuranceDataTable = () => {
   };
 
   const formatContractNumber = (contractNumber: string | number) => {
-    // Handle null, undefined or empty strings
-    if (contractNumber === null || contractNumber === undefined || contractNumber === '') {
+    if (!contractNumber || contractNumber === null || contractNumber === undefined) {
       return <span className="text-muted-foreground italic">Non disponible</span>;
     }
     
-    // Convert to string to handle both string and number types
     const contractStr = String(contractNumber);
     
-    // Handle "Pas de N°" cases
-    if (contractStr.startsWith('Pas de N°') || contractStr === 'Non disponible') {
+    if (contractStr === 'Pas de N°' || contractStr === 'Non disponible' || contractStr === '') {
       return <span className="text-muted-foreground italic">Non disponible</span>;
     }
     
-    // Handle formatted contract numbers (with slash)
-    if (contractStr.includes('/')) {
-      return <span className="font-mono">{contractStr}</span>;
-    }
-    
-    // Return all other formats as-is
-    return <span>{contractStr}</span>;
+    return <span className="font-mono">{contractStr}</span>;
   };
 
   const filteredData = insuranceData.filter(item => {
-    // Main search query filter (client name and contract number only)
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       const matchesClientName = item.clientName?.toLowerCase().includes(query);
@@ -181,7 +170,6 @@ const InsuranceDataTable = () => {
       if (!matchesClientName && !matchesContractNumber) return false;
     }
     
-    // Separate code agence filter
     if (codeAgenceFilter) {
       const agenceQuery = codeAgenceFilter.toLowerCase();
       if (!String(item.codeAgence)?.toLowerCase().includes(agenceQuery)) {
@@ -189,7 +177,6 @@ const InsuranceDataTable = () => {
       }
     }
     
-    // Status filter
     if (statusFilter !== "all") {
       const statusMapping: Record<string, string> = {
         "paid": "Recouvré",
@@ -288,7 +275,6 @@ const InsuranceDataTable = () => {
       </div>
       
       <div className="flex flex-wrap gap-4 items-center">
-        {/* Main search - for client name and contract number only */}
         <div className="flex items-center relative">
           <Input
             placeholder="Rechercher par client ou numéro police..."
@@ -299,16 +285,21 @@ const InsuranceDataTable = () => {
           <Search className="h-4 w-4 absolute left-2 text-muted-foreground" />
         </div>
         
-        {/* Dedicated Code Agence filter */}
-        <div className="flex items-center relative">
-          <Input
-            placeholder="Filtrer par code agence..."
-            value={codeAgenceFilter}
-            onChange={(e) => setCodeAgenceFilter(e.target.value)}
-            className="max-w-xs pl-8"
-          />
-          <Search className="h-4 w-4 absolute left-2 text-muted-foreground" />
-        </div>
+        <Select value={codeAgenceFilter} onValueChange={setCodeAgenceFilter}>
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder="Code Agence: Tous" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Code Agence: Tous</SelectItem>
+            {Array.from(new Set(insuranceData.map(item => item.codeAgence)))
+              .sort()
+              .map(agency => (
+                <SelectItem key={agency} value={agency}>
+                  {agency}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
         
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-44">

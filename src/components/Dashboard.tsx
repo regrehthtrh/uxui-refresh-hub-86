@@ -1,7 +1,5 @@
-
 import React from "react";
 import { insuranceStore } from "@/store/insuranceStore";
-import type { InsuranceStatus } from "@/store/insuranceStore";
 import {
   Card,
   CardContent,
