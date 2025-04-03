@@ -30,7 +30,7 @@ const ROWS_PER_PAGE = 100;
 const InsuranceDataTable = () => {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
-  const [codeAgenceFilter, setCodeAgenceFilter] = useState("");
+  const [codeAgenceFilter, setCodeAgenceFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateSort, setDateSort] = useState("ascending");
   const [isLoading, setIsLoading] = useState(false);
@@ -109,7 +109,7 @@ const InsuranceDataTable = () => {
   
   const handleResetFilters = () => {
     setSearchQuery("");
-    setCodeAgenceFilter("");
+    setCodeAgenceFilter("all");
     setStatusFilter("all");
     setDateSort("ascending");
     setCurrentPage(1);
@@ -170,9 +170,8 @@ const InsuranceDataTable = () => {
       if (!matchesClientName && !matchesContractNumber) return false;
     }
     
-    if (codeAgenceFilter) {
-      const agenceQuery = codeAgenceFilter.toLowerCase();
-      if (!String(item.codeAgence)?.toLowerCase().includes(agenceQuery)) {
+    if (codeAgenceFilter !== "all") {
+      if (!String(item.codeAgence)?.toLowerCase().includes(codeAgenceFilter.toLowerCase())) {
         return false;
       }
     }
@@ -290,7 +289,7 @@ const InsuranceDataTable = () => {
             <SelectValue placeholder="Code Agence: Tous" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Code Agence: Tous</SelectItem>
+            <SelectItem value="all">Code Agence: Tous</SelectItem>
             {Array.from(new Set(insuranceData.map(item => item.codeAgence)))
               .filter(agency => agency)
               .sort()
