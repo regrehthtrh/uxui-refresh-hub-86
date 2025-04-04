@@ -1,4 +1,5 @@
-import React, { useState, useRef } from "react";
+
+import React, { useState, useRef, useMemo } from "react";
 import { 
   Table, TableBody, TableCell, TableHead, 
   TableHeader, TableRow 
@@ -10,10 +11,17 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
+import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { insuranceStore } from "@/store/insuranceStore";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, FileUp, RefreshCw, MoreHorizontal, X, Loader2, Search } from "lucide-react";
+import { Copy, FileUp, RefreshCw, MoreHorizontal, X, Loader2 } from "lucide-react";
 import ConfirmResetDialog from "./ConfirmResetDialog";
 import {
   Pagination,
@@ -24,14 +32,18 @@ import {
   PaginationPrevious,
   PaginationEllipsis
 } from "@/components/ui/pagination";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { CheckIcon, ChevronsUpDown } from "lucide-react";
+import AgencyFilter from "./AgencyFilter";
 
 const ROWS_PER_PAGE = 100;
 
 const InsuranceDataTable = () => {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
-  const [codeAgenceFilter, setCodeAgenceFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [codeAgenceFilter, setCodeAgenceFilter] = useState("all");
   const [dateSort, setDateSort] = useState("ascending");
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -42,7 +54,20 @@ const InsuranceDataTable = () => {
     insuranceData,
     loadFile,
     resetData,
+    lastUpdated,
+    importSource
   } = insuranceStore();
+  
+  // Get unique agencies for the filter dropdown
+  const uniqueAgencies = useMemo(() => {
+    const agencies = new Set<string>();
+    insuranceData.forEach(item => {
+      if (item.codeAgence) {
+        agencies.add(item.codeAgence);
+      }
+    });
+    return Array.from(agencies).sort();
+  }, [insuranceData]);
   
   const handleLoadFile = () => {
     if (fileInputRef.current) {
@@ -109,8 +134,8 @@ const InsuranceDataTable = () => {
   
   const handleResetFilters = () => {
     setSearchQuery("");
-    setCodeAgenceFilter("all");
     setStatusFilter("all");
+    setCodeAgenceFilter("all");
     setDateSort("ascending");
     setCurrentPage(1);
     
@@ -147,35 +172,34 @@ const InsuranceDataTable = () => {
     }
   };
 
-  const formatContractNumber = (contractNumber: string | number) => {
-    if (!contractNumber || contractNumber === null || contractNumber === undefined) {
+  const formatContractNumber = (contractNumber: string) => {
+    if (!contractNumber) {
       return <span className="text-muted-foreground italic">Non disponible</span>;
     }
     
-    const contractStr = String(contractNumber);
-    
-    if (contractStr === 'Pas de N°' || contractStr === 'Non disponible' || contractStr === '') {
+    if (typeof contractNumber === 'string' && contractNumber.startsWith('Pas de N°')) {
       return <span className="text-muted-foreground italic">Non disponible</span>;
     }
     
-    return <span className="font-mono">{contractStr}</span>;
+    if (typeof contractNumber === 'string' && contractNumber.includes('/')) {
+      return <span className="font-mono">{contractNumber}</span>;
+    }
+    
+    return <span>{contractNumber}</span>;
   };
 
   const filteredData = insuranceData.filter(item => {
+    // Text search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
+      
       const matchesClientName = item.clientName?.toLowerCase().includes(query);
-      const matchesContractNumber = String(item.contractNumber)?.toLowerCase().includes(query);
+      const matchesContractNumber = item.contractNumber?.toLowerCase().includes(query);
       
       if (!matchesClientName && !matchesContractNumber) return false;
     }
     
-    if (codeAgenceFilter !== "all") {
-      if (!String(item.codeAgence)?.toLowerCase().includes(codeAgenceFilter.toLowerCase())) {
-        return false;
-      }
-    }
-    
+    // Status filter
     if (statusFilter !== "all") {
       const statusMapping: Record<string, string> = {
         "paid": "Recouvré",
@@ -183,6 +207,11 @@ const InsuranceDataTable = () => {
         "unpaid": "Créance"
       };
       if (item.status !== statusMapping[statusFilter]) return false;
+    }
+    
+    // Code agence filter
+    if (codeAgenceFilter !== "all") {
+      if (item.codeAgence !== codeAgenceFilter) return false;
     }
     
     return true;
@@ -271,35 +300,24 @@ const InsuranceDataTable = () => {
             </Button>
           </ConfirmResetDialog>
         </div>
+        
+        {lastUpdated && (
+          <div className="text-sm text-muted-foreground">
+            Dernière mise à jour: <span className="font-medium">{lastUpdated}</span>
+            {importSource && (
+              <span className="ml-1">({importSource})</span>
+            )}
+          </div>
+        )}
       </div>
       
       <div className="flex flex-wrap gap-4 items-center">
-        <div className="flex items-center relative">
-          <Input
-            placeholder="Rechercher par client ou numéro police..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="max-w-xs pl-8"
-          />
-          <Search className="h-4 w-4 absolute left-2 text-muted-foreground" />
-        </div>
-        
-        <Select value={codeAgenceFilter} onValueChange={setCodeAgenceFilter}>
-          <SelectTrigger className="w-44">
-            <SelectValue placeholder="Code Agence: Tous" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Code Agence: Tous</SelectItem>
-            {Array.from(new Set(insuranceData.map(item => item.codeAgence)))
-              .filter(agency => agency)
-              .sort()
-              .map(agency => (
-                <SelectItem key={agency} value={agency}>
-                  {agency}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
+        <Input
+          placeholder="Rechercher par client ou police..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="max-w-xs"
+        />
         
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-44">
@@ -322,6 +340,13 @@ const InsuranceDataTable = () => {
             <SelectItem value="descending">Date d'effet: Décroissant</SelectItem>
           </SelectContent>
         </Select>
+        
+        {/* Agency filter with search */}
+        <AgencyFilter 
+          agencies={uniqueAgencies}
+          value={codeAgenceFilter}
+          onValueChange={setCodeAgenceFilter}
+        />
         
         <Button variant="outline" onClick={handleResetFilters} size="sm" className="flex items-center gap-1">
           <X className="h-4 w-4" />
