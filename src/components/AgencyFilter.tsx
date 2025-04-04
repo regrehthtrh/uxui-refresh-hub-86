@@ -22,8 +22,11 @@ interface AgencyFilterProps {
   onValueChange: (value: string) => void;
 }
 
-const AgencyFilter = ({ agencies, value, onValueChange }: AgencyFilterProps) => {
+const AgencyFilter = ({ agencies = [], value, onValueChange }: AgencyFilterProps) => {
   const [open, setOpen] = useState(false);
+  
+  // Ensure agencies is always an array to prevent "undefined is not iterable" error
+  const safeAgencies = Array.isArray(agencies) ? agencies : [];
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -62,7 +65,7 @@ const AgencyFilter = ({ agencies, value, onValueChange }: AgencyFilterProps) => 
               Toutes les agences
             </CommandItem>
             
-            {agencies.map((agency) => (
+            {safeAgencies.map((agency) => (
               <CommandItem
                 key={agency}
                 value={agency}

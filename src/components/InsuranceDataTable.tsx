@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo } from "react";
 import { 
   Table, TableBody, TableCell, TableHead, 
@@ -58,8 +57,10 @@ const InsuranceDataTable = () => {
     importSource
   } = insuranceStore();
   
-  // Get unique agencies for the filter dropdown
+  // Make sure uniqueAgencies always returns an array, even when insuranceData is empty
   const uniqueAgencies = useMemo(() => {
+    if (!insuranceData || insuranceData.length === 0) return [];
+    
     const agencies = new Set<string>();
     insuranceData.forEach(item => {
       if (item.codeAgence) {
