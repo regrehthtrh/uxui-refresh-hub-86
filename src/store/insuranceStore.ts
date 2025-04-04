@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import * as XLSX from 'xlsx';
 import { format, differenceInDays, isValid } from 'date-fns';
@@ -123,57 +122,15 @@ const findBestColumnMatch = (columns: string[], possibleMatches: string[]): stri
   return null;
 };
 
-// Improved function to properly handle contract number formatting
-const cleanContractNumber = (value: any): string => {
+// Read contract number as-is without cleaning
+const readContractNumberAsIs = (value: any): string => {
   // Handle null or undefined
   if (value === null || value === undefined) {
     return "";
   }
   
-  // Convert to string and trim
-  let contractNumber = String(value).trim();
-  
-  // Check for common Excel errors
-  if (contractNumber === "" || 
-      contractNumber === "#N/A" || 
-      contractNumber === "#REF!" || 
-      contractNumber === "#VALUE!" ||
-      contractNumber === "#DIV/0!" ||
-      contractNumber === "#NAME?" ||
-      contractNumber === "#NULL!" ||
-      contractNumber === "#NUM!" ||
-      /^#+$/.test(contractNumber)) {
-    return "";
-  }
-  
-  // Enhanced handling for numeric values that Excel might convert to scientific notation
-  if (/^[0-9.e+-]+$/.test(contractNumber)) {
-    try {
-      // Parse the numeric value to get the actual number
-      const num = Number(contractNumber);
-      
-      // If it's a valid number, format it correctly (avoid scientific notation)
-      if (!isNaN(num)) {
-        contractNumber = num.toString();
-        
-        // If it was an integer converted to float, remove decimal part
-        if (Number.isInteger(num) && contractNumber.includes('.')) {
-          contractNumber = contractNumber.split('.')[0];
-        }
-      }
-    } catch(e) {
-      console.error("Error parsing numeric contract number:", e);
-    }
-  }
-  
-  // Special handling for contract number format P/A16004/4/24/000284
-  // Ensure all parts of the format are preserved
-  if (/^P\/[A-Z0-9]+\/\d+\/\d+\/\d+$/.test(contractNumber)) {
-    return contractNumber;
-  }
-  
-  // Return the cleaned contract number
-  return contractNumber;
+  // Simply convert to string and return as-is
+  return String(value);
 };
 
 // Définir les types corrects
@@ -276,7 +233,7 @@ export const insuranceStore = create<InsuranceStore>()(
           const allData = XLSX.utils.sheet_to_json(worksheet, { 
             header: "A", 
             range: 10,
-            raw: false, // VERY IMPORTANT: keep values as text to avoid Excel auto-formatting issues
+            raw: false, // Keep values as text to avoid Excel auto-formatting issues
             defval: ""
           });
           
@@ -372,13 +329,13 @@ export const insuranceStore = create<InsuranceStore>()(
               
               for (const [excelCol, targetField] of Object.entries(columnMapping)) {
                 if (targetField === "Contract Number") {
-                  // IMPROVED: Better handling for contract numbers using our enhanced function
+                  // Simply read the raw value without cleaning
                   const rawValue = row[excelCol];
-                  const cleanedValue = cleanContractNumber(rawValue);
+                  const contractNumberAsIs = readContractNumberAsIs(rawValue);
                   
-                  // Only set "Pas de N°" if really no contract number was found
-                  if (cleanedValue && cleanedValue.length > 0) {
-                    result.contractNumber = cleanedValue;
+                  // Only generate a placeholder if truly empty
+                  if (contractNumberAsIs && contractNumberAsIs.length > 0) {
+                    result.contractNumber = contractNumberAsIs;
                     hasContractNumber = true;
                   } else {
                     result.contractNumber = `Pas de N° ${i}`;
@@ -386,7 +343,7 @@ export const insuranceStore = create<InsuranceStore>()(
                   
                   // Debug log to see what we're dealing with
                   if (i < 10) {  // Only log first few rows to avoid console spam
-                    console.log(`Row ${i} Contract: Raw="${rawValue}", Type=${typeof rawValue}, Cleaned="${cleanedValue}"`);
+                    console.log(`Row ${i} Contract: Raw="${rawValue}", Type=${typeof rawValue}, As-Is="${contractNumberAsIs}"`);
                   }
                 } else if (targetField === "Client Name") {
                   result.clientName = String(row[excelCol] || "").trim() || `Client-${i}`;
