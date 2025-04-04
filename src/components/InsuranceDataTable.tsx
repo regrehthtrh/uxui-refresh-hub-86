@@ -12,9 +12,22 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { 
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { insuranceStore } from "@/store/insuranceStore";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, FileUp, RefreshCw, MoreHorizontal, X, Loader2 } from "lucide-react";
+import { Check, ChevronDown, Copy, FileUp, RefreshCw, MoreHorizontal, X, Loader2, Search } from "lucide-react";
 import ConfirmResetDialog from "./ConfirmResetDialog";
 import {
   Pagination,
@@ -25,8 +38,82 @@ import {
   PaginationPrevious,
   PaginationEllipsis
 } from "@/components/ui/pagination";
+import { cn } from "@/lib/utils";
 
 const ROWS_PER_PAGE = 100;
+
+const AgencyFilter = ({ agencies, value, onValueChange }: { agencies: string[], value: string, onValueChange: (value: string) => void }) => {
+  const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  const filteredAgencies = useMemo(() => {
+    if (!searchQuery.trim()) return agencies;
+    return agencies.filter(agency => 
+      agency.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [agencies, searchQuery]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button 
+          variant="outline" 
+          role="combobox" 
+          aria-expanded={open}
+          className="w-48 justify-between"
+        >
+          {value === "all" ? "Agence: Toutes" : value}
+          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-48 p-0">
+        <Command>
+          <CommandInput 
+            placeholder="Rechercher..." 
+            onValueChange={setSearchQuery}
+            className="h-9"
+          />
+          <CommandList>
+            <CommandEmpty>Aucune agence trouvée</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                onSelect={() => {
+                  onValueChange("all");
+                  setOpen(false);
+                }}
+              >
+                <Check
+                  className={cn(
+                    "mr-2 h-4 w-4",
+                    value === "all" ? "opacity-100" : "opacity-0"
+                  )}
+                />
+                Agence: Toutes
+              </CommandItem>
+              {filteredAgencies.map((agency) => (
+                <CommandItem
+                  key={agency}
+                  onSelect={() => {
+                    onValueChange(agency);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === agency ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {agency}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 const InsuranceDataTable = () => {
   const { toast } = useToast();
@@ -319,18 +406,12 @@ const InsuranceDataTable = () => {
           </SelectContent>
         </Select>
         
-        {/* Standalone Code Agence filter */}
-        <Select value={codeAgenceFilter} onValueChange={setCodeAgenceFilter}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Agence: Toutes" />
-          </SelectTrigger>
-          <SelectContent className="max-h-[300px]">
-            <SelectItem value="all">Agence: Toutes</SelectItem>
-            {uniqueAgencies.map((agency, index) => (
-              <SelectItem key={index} value={agency}>{agency}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Searchable Agency filter */}
+        <AgencyFilter 
+          agencies={uniqueAgencies} 
+          value={codeAgenceFilter} 
+          onValueChange={setCodeAgenceFilter} 
+        />
         
         <Button variant="outline" onClick={handleResetFilters} size="sm" className="flex items-center gap-1">
           <X className="h-4 w-4" />
