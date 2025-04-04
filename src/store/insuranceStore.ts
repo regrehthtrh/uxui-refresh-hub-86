@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import * as XLSX from 'xlsx';
 import { format, differenceInDays, isValid } from 'date-fns';
@@ -145,6 +146,26 @@ const cleanContractNumber = (value: any): string => {
     return "";
   }
   
+  // Enhanced handling for numeric values that Excel might convert to scientific notation
+  if (/^[0-9.e+-]+$/.test(contractNumber)) {
+    try {
+      // Parse the numeric value to get the actual number
+      const num = Number(contractNumber);
+      
+      // If it's a valid number, format it correctly (avoid scientific notation)
+      if (!isNaN(num)) {
+        contractNumber = num.toString();
+        
+        // If it was an integer converted to float, remove decimal part
+        if (Number.isInteger(num) && contractNumber.includes('.')) {
+          contractNumber = contractNumber.split('.')[0];
+        }
+      }
+    } catch(e) {
+      console.error("Error parsing numeric contract number:", e);
+    }
+  }
+  
   // Special handling for contract number format P/A16004/4/24/000284
   // Ensure all parts of the format are preserved
   if (/^P\/[A-Z0-9]+\/\d+\/\d+\/\d+$/.test(contractNumber)) {
@@ -216,6 +237,8 @@ export const insuranceStore = create<InsuranceStore>()(
             type: 'array',     // Optimisé pour les fichiers volumineux
             cellDates: true,   // Convertir les dates en objets Date automatiquement
             dateNF: 'yyyy-mm-dd', // Format de date par défaut
+            raw: true,         // Get raw values (we'll do our own parsing)
+            cellNF: false,     // Don't use number formats (raw data)
           });
           
           console.log("Workbook chargé, feuilles disponibles:", workbook.SheetNames);
@@ -249,11 +272,11 @@ export const insuranceStore = create<InsuranceStore>()(
           const worksheet = workbook.Sheets[targetSheetName];
           console.log("Feuille chargée, préparation à l'extraction des données");
           
-          // Obtenir les données en mode texte pour éviter les problèmes de conversion
+          // Get the raw data without type conversion
           const allData = XLSX.utils.sheet_to_json(worksheet, { 
             header: "A", 
             range: 10,
-            raw: false, // Très important: garder les valeurs en tant que texte pour éviter les problèmes
+            raw: false, // VERY IMPORTANT: keep values as text to avoid Excel auto-formatting issues
             defval: ""
           });
           
@@ -349,7 +372,7 @@ export const insuranceStore = create<InsuranceStore>()(
               
               for (const [excelCol, targetField] of Object.entries(columnMapping)) {
                 if (targetField === "Contract Number") {
-                  // IMPROVED: Better handling for contract numbers using our new function
+                  // IMPROVED: Better handling for contract numbers using our enhanced function
                   const rawValue = row[excelCol];
                   const cleanedValue = cleanContractNumber(rawValue);
                   
@@ -359,6 +382,11 @@ export const insuranceStore = create<InsuranceStore>()(
                     hasContractNumber = true;
                   } else {
                     result.contractNumber = `Pas de N° ${i}`;
+                  }
+                  
+                  // Debug log to see what we're dealing with
+                  if (i < 10) {  // Only log first few rows to avoid console spam
+                    console.log(`Row ${i} Contract: Raw="${rawValue}", Type=${typeof rawValue}, Cleaned="${cleanedValue}"`);
                   }
                 } else if (targetField === "Client Name") {
                   result.clientName = String(row[excelCol] || "").trim() || `Client-${i}`;

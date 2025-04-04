@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo } from "react";
 import { 
   Table, TableBody, TableCell, TableHead, 
@@ -132,7 +131,6 @@ const InsuranceDataTable = () => {
     resetData,
   } = insuranceStore();
   
-  // Get unique agencies for the filter dropdown
   const uniqueAgencies = useMemo(() => {
     const agencies = new Set<string>();
     insuranceData.forEach(item => {
@@ -259,11 +257,14 @@ const InsuranceDataTable = () => {
       return <span className="font-mono">{contractNumber}</span>;
     }
     
+    if (/^\d+$/.test(contractNumber)) {
+      return <span className="font-mono">{contractNumber}</span>;
+    }
+    
     return <span>{contractNumber}</span>;
   };
 
   const filteredData = insuranceData.filter(item => {
-    // Text search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       
@@ -273,7 +274,6 @@ const InsuranceDataTable = () => {
       if (!matchesClientName && !matchesContractNumber) return false;
     }
     
-    // Status filter
     if (statusFilter !== "all") {
       const statusMapping: Record<string, string> = {
         "paid": "Recouvré",
@@ -283,7 +283,6 @@ const InsuranceDataTable = () => {
       if (item.status !== statusMapping[statusFilter]) return false;
     }
     
-    // Code agence filter
     if (codeAgenceFilter !== "all") {
       if (item.codeAgence !== codeAgenceFilter) return false;
     }
@@ -406,7 +405,6 @@ const InsuranceDataTable = () => {
           </SelectContent>
         </Select>
         
-        {/* Searchable Agency filter */}
         <AgencyFilter 
           agencies={uniqueAgencies} 
           value={codeAgenceFilter} 
