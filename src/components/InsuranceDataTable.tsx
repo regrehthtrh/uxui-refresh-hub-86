@@ -245,11 +245,19 @@ const InsuranceDataTable = () => {
   };
 
   const formatContractNumber = (contractNumber: string) => {
-    if (!contractNumber) {
+    if (!contractNumber || contractNumber === undefined) {
       return <span className="text-muted-foreground italic">Non disponible</span>;
     }
     
     if (typeof contractNumber === 'string' && contractNumber.startsWith('Pas de N°')) {
+      return <span className="text-muted-foreground italic">Non disponible</span>;
+    }
+    
+    if (typeof contractNumber === 'string' && 
+        (contractNumber.includes('#N/A') || 
+         contractNumber.includes('#REF') || 
+         contractNumber.includes('#DIV') || 
+         contractNumber.includes('#VALUE'))) {
       return <span className="text-muted-foreground italic">Non disponible</span>;
     }
     

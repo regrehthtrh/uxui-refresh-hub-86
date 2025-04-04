@@ -122,7 +122,37 @@ const findBestColumnMatch = (columns: string[], possibleMatches: string[]): stri
   return null;
 };
 
-// Read contract number as-is without cleaning
+// Enhanced function to properly handle contract numbers with special focus on preserving formats
+const getContractNumber = (value: any): string => {
+  // Handle null or undefined
+  if (value === null || value === undefined) {
+    return "";
+  }
+  
+  // Special handling for cell objects that XLSX might return
+  if (typeof value === 'object' && value !== null) {
+    // If it's a cell with formatted text, use that
+    if ('w' in value && value.w !== undefined) {
+      return String(value.w); // Use the formatted display string
+    }
+    // If it has a raw value, use that
+    if ('v' in value && value.v !== undefined) {
+      return String(value.v);
+    }
+    // If it's some other object, try to stringify it
+    try {
+      return JSON.stringify(value);
+    } catch (e) {
+      console.error("Failed to stringify object contract number:", e);
+      return "";
+    }
+  }
+  
+  // For direct values (strings, numbers, etc.)
+  return String(value);
+};
+
+// Fonction pour lire le numéro de contrat sans nettoyage
 const readContractNumberAsIs = (value: any): string => {
   // Handle null or undefined
   if (value === null || value === undefined) {
@@ -188,14 +218,15 @@ export const insuranceStore = create<InsuranceStore>()(
           console.log("Fichier converti en ArrayBuffer, taille:", data.byteLength);
           
           const workbook = XLSX.read(data, {
-            cellFormula: false, // Désactiver les formules pour améliorer les performances
-            cellHTML: false,   // Désactiver le HTML pour améliorer les performances
-            cellText: true,    // Activer le texte brut pour améliorer les performances
-            type: 'array',     // Optimisé pour les fichiers volumineux
-            cellDates: true,   // Convertir les dates en objets Date automatiquement
-            dateNF: 'yyyy-mm-dd', // Format de date par défaut
-            raw: true,         // Get raw values (we'll do our own parsing)
-            cellNF: false,     // Don't use number formats (raw data)
+            cellFormula: false, 
+            cellHTML: false,
+            cellText: true,
+            type: 'array',
+            cellDates: true,
+            dateNF: 'yyyy-mm-dd',
+            raw: true,
+            cellNF: true,
+            cellStyles: true
           });
           
           console.log("Workbook chargé, feuilles disponibles:", workbook.SheetNames);
@@ -229,12 +260,14 @@ export const insuranceStore = create<InsuranceStore>()(
           const worksheet = workbook.Sheets[targetSheetName];
           console.log("Feuille chargée, préparation à l'extraction des données");
           
-          // Get the raw data without type conversion
+          // Get the raw data including the full cell objects
           const allData = XLSX.utils.sheet_to_json(worksheet, { 
             header: "A", 
             range: 10,
-            raw: false, // Keep values as text to avoid Excel auto-formatting issues
-            defval: ""
+            raw: false,
+            defval: "",
+            cellDates: true,
+            blankrows: false
           });
           
           console.log(`Données extraites: ${allData.length} lignes trouvées`);
@@ -287,6 +320,24 @@ export const insuranceStore = create<InsuranceStore>()(
           
           console.log("Mappage de colonnes réussi:", columnMapping);
           
+          // Check for Contract Number column specifically
+          const contractColumn = Object.entries(columnMapping).find(([_, field]) => field === "Contract Number");
+          if (contractColumn) {
+            console.log(`Colonne de numéro de contrat trouvée: ${contractColumn[0]}`);
+            
+            // Display some sample values from the first few rows
+            console.log("Échantillon de valeurs de contrats:");
+            for (let i = 1; i < Math.min(10, allData.length); i++) {
+              const row = allData[i];
+              if (row && contractColumn[0] in row) {
+                const rawValue = (row as any)[contractColumn[0]];
+                console.log(`  Row ${i}: ${JSON.stringify(rawValue)} (${typeof rawValue})`);
+              }
+            }
+          } else {
+            console.warn("ATTENTION: Aucune colonne de numéro de contrat n'a été trouvée!");
+          }
+          
           // Process all rows - skip the header row (index 0)
           console.log(`Traitement de toutes les ${allData.length-1} lignes`);
           
@@ -323,27 +374,27 @@ export const insuranceStore = create<InsuranceStore>()(
                 status: "Créance"
               };
               
-              // First ensure we always have the key fields with special handling for contract numbers
+              // First ensure we always have the key fields
               let hasContractNumber = false;
               let hasClientName = false;
               
               for (const [excelCol, targetField] of Object.entries(columnMapping)) {
                 if (targetField === "Contract Number") {
-                  // Simply read the raw value without cleaning
+                  // MODIFIED: Use the enhanced getContractNumber function
                   const rawValue = row[excelCol];
-                  const contractNumberAsIs = readContractNumberAsIs(rawValue);
+                  const extractedContractNumber = getContractNumber(rawValue);
+                  
+                  // Debug logging for troubleshooting
+                  if (i < 20) {  // Increased sample size for better debugging
+                    console.log(`Row ${i} Contract: Raw=${JSON.stringify(rawValue)}, Type=${typeof rawValue}, Extracted="${extractedContractNumber}"`);
+                  }
                   
                   // Only generate a placeholder if truly empty
-                  if (contractNumberAsIs && contractNumberAsIs.length > 0) {
-                    result.contractNumber = contractNumberAsIs;
+                  if (extractedContractNumber && extractedContractNumber.trim().length > 0) {
+                    result.contractNumber = extractedContractNumber.trim();
                     hasContractNumber = true;
                   } else {
                     result.contractNumber = `Pas de N° ${i}`;
-                  }
-                  
-                  // Debug log to see what we're dealing with
-                  if (i < 10) {  // Only log first few rows to avoid console spam
-                    console.log(`Row ${i} Contract: Raw="${rawValue}", Type=${typeof rawValue}, As-Is="${contractNumberAsIs}"`);
                   }
                 } else if (targetField === "Client Name") {
                   result.clientName = String(row[excelCol] || "").trim() || `Client-${i}`;
