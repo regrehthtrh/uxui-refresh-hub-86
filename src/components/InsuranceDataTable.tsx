@@ -11,7 +11,14 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
+import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { insuranceStore } from "@/store/insuranceStore";
 import { useToast } from "@/hooks/use-toast";
 import { Copy, FileUp, RefreshCw, MoreHorizontal, X, Loader2 } from "lucide-react";
@@ -25,6 +32,10 @@ import {
   PaginationPrevious,
   PaginationEllipsis
 } from "@/components/ui/pagination";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { CheckIcon, ChevronsUpDown } from "lucide-react";
+import AgencyFilter from "./AgencyFilter";
 
 const ROWS_PER_PAGE = 100;
 
@@ -43,6 +54,8 @@ const InsuranceDataTable = () => {
     insuranceData,
     loadFile,
     resetData,
+    lastUpdated,
+    importSource
   } = insuranceStore();
   
   // Get unique agencies for the filter dropdown
@@ -287,6 +300,15 @@ const InsuranceDataTable = () => {
             </Button>
           </ConfirmResetDialog>
         </div>
+        
+        {lastUpdated && (
+          <div className="text-sm text-muted-foreground">
+            Dernière mise à jour: <span className="font-medium">{lastUpdated}</span>
+            {importSource && (
+              <span className="ml-1">({importSource})</span>
+            )}
+          </div>
+        )}
       </div>
       
       <div className="flex flex-wrap gap-4 items-center">
@@ -319,18 +341,12 @@ const InsuranceDataTable = () => {
           </SelectContent>
         </Select>
         
-        {/* Standalone Code Agence filter */}
-        <Select value={codeAgenceFilter} onValueChange={setCodeAgenceFilter}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Agence: Toutes" />
-          </SelectTrigger>
-          <SelectContent className="max-h-[300px]">
-            <SelectItem value="all">Agence: Toutes</SelectItem>
-            {uniqueAgencies.map((agency, index) => (
-              <SelectItem key={index} value={agency}>{agency}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {/* Agency filter with search */}
+        <AgencyFilter 
+          agencies={uniqueAgencies}
+          value={codeAgenceFilter}
+          onValueChange={setCodeAgenceFilter}
+        />
         
         <Button variant="outline" onClick={handleResetFilters} size="sm" className="flex items-center gap-1">
           <X className="h-4 w-4" />
