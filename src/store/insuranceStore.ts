@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import * as XLSX from 'xlsx';
 import { format, differenceInDays, isValid } from 'date-fns';
@@ -156,48 +155,6 @@ const cleanContractNumber = (value: any): string => {
   return contractNumber;
 };
 
-// Extract the date from Excel file content (from the header)
-const extractFileDate = (worksheet: XLSX.WorkSheet): string | null => {
-  try {
-    // Try to find date in the first 10 rows
-    for (let row = 0; row < 10; row++) {
-      for (let col = 0; col < 10; col++) {
-        const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-        const cell = worksheet[cellAddress];
-        
-        if (cell && cell.v) {
-          const cellValue = String(cell.v).toLowerCase();
-          
-          // Look for date patterns in text
-          if ((cellValue.includes('date') || 
-               cellValue.includes('mise') || 
-               cellValue.includes('à jour') ||
-               cellValue.includes('maj') ||
-               cellValue.includes('dernière')) && 
-              /\b\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4}\b/.test(cellValue)) {
-            
-            // Extract date using regex
-            const dateMatch = cellValue.match(/\b(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})\b/);
-            if (dateMatch && dateMatch[1]) {
-              return dateMatch[1];
-            }
-          }
-          
-          // If cell contains a standalone date
-          if (/^\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4}$/.test(cellValue)) {
-            return cellValue;
-          }
-        }
-      }
-    }
-    
-    return null;
-  } catch (error) {
-    console.error("Error extracting file date:", error);
-    return null;
-  }
-};
-
 // Définir les types corrects
 export type InsuranceStatus = 'Recouvré' | 'Partiellement recouvré' | 'Créance';
 
@@ -212,7 +169,6 @@ interface InsuranceData {
   remainingAmount: number;
   timePassed: string;
   status: InsuranceStatus;
-  lastUpdated?: string; // When this record was last updated
 }
 
 interface EmailMapping {
@@ -230,8 +186,6 @@ interface InsuranceStore {
   insuranceData: InsuranceData[];
   emailMappings: EmailMapping[];
   sentEmails: SentEmailRecord[];
-  lastUpdated: string | null; // When the data was last updated
-  importSource: string | null; // Source of the last update (file date)
   loadFile: (file: File) => Promise<void>;
   resetData: () => void;
   loadEmailMapping: (file: File) => Promise<void>;
@@ -246,8 +200,6 @@ export const insuranceStore = create<InsuranceStore>()(
       insuranceData: [],
       emailMappings: [],
       sentEmails: [],
-      lastUpdated: null,
-      importSource: null,
       
       loadFile: async (file) => {
         try {
@@ -296,10 +248,6 @@ export const insuranceStore = create<InsuranceStore>()(
           
           const worksheet = workbook.Sheets[targetSheetName];
           console.log("Feuille chargée, préparation à l'extraction des données");
-          
-          // Try to extract the file's own date
-          const fileDate = extractFileDate(worksheet);
-          const importDate = fileDate || format(new Date(), 'dd/MM/yyyy');
           
           // Obtenir les données en mode texte pour éviter les problèmes de conversion
           const allData = XLSX.utils.sheet_to_json(worksheet, { 
@@ -359,17 +307,6 @@ export const insuranceStore = create<InsuranceStore>()(
           
           console.log("Mappage de colonnes réussi:", columnMapping);
           
-          // Get existing data for comparison and update
-          const { insuranceData: existingData } = get();
-          const existingContractMap = new Map<string, InsuranceData>();
-          
-          // Create a map of existing contract numbers for quick lookup
-          existingData.forEach(item => {
-            if (item.contractNumber && !item.contractNumber.startsWith('Pas de N°')) {
-              existingContractMap.set(item.contractNumber, item);
-            }
-          });
-          
           // Process all rows - skip the header row (index 0)
           console.log(`Traitement de toutes les ${allData.length-1} lignes`);
           
@@ -403,8 +340,7 @@ export const insuranceStore = create<InsuranceStore>()(
                 amountPaid: 0,
                 remainingAmount: 0,
                 timePassed: "",
-                status: "Créance",
-                lastUpdated: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
+                status: "Créance"
               };
               
               // First ensure we always have the key fields with special handling for contract numbers
@@ -564,22 +500,6 @@ export const insuranceStore = create<InsuranceStore>()(
                 }
               }
               
-              // Check if this contract exists in previous data
-              const existingContract = existingContractMap.get(result.contractNumber);
-              if (existingContract && !result.contractNumber.startsWith('Pas de N°')) {
-                // Preserve data that might be missing in the new file
-                if (!result.clientName && existingContract.clientName) {
-                  result.clientName = existingContract.clientName;
-                }
-                
-                if (!result.codeAgence && existingContract.codeAgence) {
-                  result.codeAgence = existingContract.codeAgence;
-                }
-                
-                // Remove from map to track which ones are no longer present
-                existingContractMap.delete(result.contractNumber);
-              }
-              
               // Calculs et valeurs par défaut
               if (result.totalAmount === 0 && result.amountPaid !== 0 && result.remainingAmount !== 0) {
                 result.totalAmount = (result.amountPaid || 0) + (result.remainingAmount || 0);
@@ -611,30 +531,12 @@ export const insuranceStore = create<InsuranceStore>()(
               }
             }
             
-            // Add remaining contracts from previous data as "Recouvré"
-            for (const [contractNumber, contract] of existingContractMap.entries()) {
-              // Only add real contracts, not placeholders
-              if (!contractNumber.startsWith('Pas de N°')) {
-                const updatedContract: InsuranceData = {
-                  ...contract,
-                  status: 'Recouvré',
-                  remainingAmount: 0,
-                  amountPaid: contract.totalAmount,
-                  lastUpdated: format(new Date(), 'yyyy-MM-dd HH:mm:ss')
-                };
-                
-                processedData.push(updatedContract);
-              }
-            }
-            
             const endTime = Date.now();
             console.log(`Données valides extraites: ${processedData.length} entrées en ${(endTime - startTime)/1000} secondes`);
             
             // Mettre à jour le store - en une seule opération pour améliorer les performances
-            set({
-              insuranceData: processedData,
-              lastUpdated: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
-              importSource: importDate
+            set(state => {
+              return { insuranceData: processedData };
             });
             
             console.log("Traitement du fichier Excel terminé avec succès");
@@ -650,13 +552,7 @@ export const insuranceStore = create<InsuranceStore>()(
       },
       
       resetData: () => {
-        set({ 
-          insuranceData: [], 
-          emailMappings: [], 
-          sentEmails: [],
-          lastUpdated: null,
-          importSource: null
-        });
+        set({ insuranceData: [], emailMappings: [], sentEmails: [] });
         localStorage.removeItem('sentEmails');
       },
       
@@ -811,11 +707,8 @@ export const insuranceStore = create<InsuranceStore>()(
       partialize: (state) => ({
         insuranceData: state.insuranceData,
         emailMappings: state.emailMappings,
-        sentEmails: state.sentEmails,
-        lastUpdated: state.lastUpdated,
-        importSource: state.importSource
-      }),
-      version: 1 // Add versioning to handle future schema changes
+        sentEmails: state.sentEmails
+      })
     }
   )
 );
